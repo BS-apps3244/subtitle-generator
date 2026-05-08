@@ -32,13 +32,13 @@ const WEAK_START_WORDS = new Set([
   "these", "those", "you", "we", "they"
 ]);
 const PAIR_START_WORDS = new Set([
-  "skin", "hair", "eye", "face", "body", "water", "oil", "vitamin", "hyaluronic",
-  "based", "social", "premiere", "video", "audio", "subtitle", "custom"
+  "social", "premiere", "video", "audio", "subtitle", "custom", "project",
+  "source", "review", "export", "caption", "timeline"
 ]);
 const PAIR_END_WORDS = new Set([
-  "tone", "care", "acid", "supplies", "pro", "file", "files", "editor", "rule",
+  "pro", "file", "files", "editor", "rule",
   "rules", "generator", "dictionary", "years", "days", "months", "seconds",
-  "minutes", "hours"
+  "minutes", "hours", "timeline", "track", "notes", "settings", "workflow"
 ]);
 const UNIT_WORDS = new Set([
   "second", "seconds", "minute", "minutes", "hour", "hours", "day", "days",
@@ -46,15 +46,16 @@ const UNIT_WORDS = new Set([
   "pounds", "ounces", "feet", "inches"
 ]);
 const CLAUSE_SUBJECT_STARTS = new Set([
-  "cleopatra", "greek", "honey", "women", "people", "ancient", "egyptians",
-  "physicians", "moisturizers", "sulfates", "fragrances", "skin", "we",
-  "our", "she", "he", "they", "it", "this", "that", "your"
+  "people", "teams", "projects", "captions", "subtitles", "files", "clips",
+  "we", "our", "she", "he", "they", "it", "this", "that", "your", "maya",
+  "editors", "reviewers", "clients", "producers", "captions"
 ]);
 const CLAUSE_VERBS = new Set([
-  "was", "wasn't", "were", "weren't", "is", "isn't", "are", "aren't", "bathed",
-  "mixed", "applied", "became", "came", "went", "kills", "fades", "pulls",
-  "gets", "used", "started", "added", "built", "tried", "worked", "said",
-  "learned", "had", "would", "crack", "bleed", "make", "recognize"
+  "was", "wasn't", "were", "weren't", "is", "isn't", "are", "aren't",
+  "became", "came", "went", "gets", "used", "started", "added", "built",
+  "tried", "worked", "said",
+  "learned", "had", "would", "crack", "bleed", "make", "recognize",
+  "presented", "reviewed", "approved", "adjusted", "organized"
 ]);
 
 let mainWindow;
@@ -75,7 +76,7 @@ const defaultSettings = {
   vocabularyDefaultIntensity: 0.4,
   vocabulary: [],
   spellingRules: [],
-  keepTogetherPhrases: ["skin tone"],
+  keepTogetherPhrases: ["video file"],
   history: []
 };
 
@@ -153,7 +154,7 @@ async function fetchLatestRelease() {
     const response = await fetch(RELEASES_API_URL, {
       headers: {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "Based-Subtitle-Generator"
+        "User-Agent": "Subtitle-Generator"
       },
       signal: controller.signal
     });

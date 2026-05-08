@@ -2,7 +2,7 @@
   "name": "subtitle-generator",
   "version": "0.1.0",
   "description": "Desktop subtitle generator for Premiere workflows using Gladia.",
-  "author": "Based Supplies",
+  "author": "Subtitle Generator Contributors",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
@@ -11,8 +11,8 @@
     "dist": "electron-builder --win"
   },
   "build": {
-    "appId": "com.basedsupplies.subtitlegenerator",
-    "productName": "Based Subtitle Generator",
+    "appId": "app.subtitlegenerator.desktop",
+    "productName": "Subtitle Generator",
     "directories": {
       "output": "dist"
     },

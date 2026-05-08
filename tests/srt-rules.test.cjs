@@ -73,7 +73,7 @@ function assertNoMixedSentenceBoundary(srt) {
 }
 
 {
-  const srt = buildSrt("This ingredient kept women's skin clear. Cleopatra was considered the most beautiful woman.");
+  const srt = buildSrt("This workflow kept every edit clear. Maya was considered the best presenter.");
   assertNoPeriods(srt);
   assertNoCaptionEndsWithPunctuation(srt);
   assertNoSingleWordCaptions(srt);
@@ -81,16 +81,16 @@ function assertNoMixedSentenceBoundary(srt) {
 }
 
 {
-  const srt = buildSrt("This ingredient kept women's skin clear, for 5,000 years.");
+  const srt = buildSrt("This workflow kept every edit clear, for 5,000 years.");
   assertNoCaptionEndsWithPunctuation(srt);
   assertNoSingleWordCaptions(srt);
 }
 
 {
-  const srt = buildSrt("Finding the right skin tone can make every video look more natural.");
+  const srt = buildSrt("Finding the right video file can make every project easier to review.");
   cueTexts(srt).forEach((text) => {
-    assert(!/\bskin$/.test(text), `Protected phrase split after skin: ${text}`);
-    assert(!/^tone\b/.test(text), `Protected phrase split before tone: ${text}`);
+    assert(!/\bvideo$/.test(text), `Protected phrase split after video: ${text}`);
+    assert(!/^file\b/.test(text), `Protected phrase split before file: ${text}`);
   });
 }
 
@@ -103,7 +103,7 @@ function assertNoMixedSentenceBoundary(srt) {
 }
 
 {
-  const srt = buildSrt("For thousands of years honey wasn't just something you ate it was skincare.");
+  const srt = buildSrt("For thousands of years this method wasn't just something people mentioned it was documented.");
   cueTexts(srt).forEach((text) => {
     assert(!/\bthousands$/.test(text), `Quantifier phrase split before of: ${text}`);
     assert(!/^of\b/i.test(text), `Caption starts with of: ${text}`);
@@ -112,11 +112,11 @@ function assertNoMixedSentenceBoundary(srt) {
 
 {
   const keepTogetherPhrases = buildKeepTogetherPhrases({
-    vocabulary: [{ value: "hyaluronic acid" }],
-    spellingRules: [{ original: "base supplies", replacement: "Based Supplies" }]
+    vocabulary: [{ value: "project timeline" }],
+    spellingRules: [{ original: "subtitle generater", replacement: "Subtitle Generator" }]
   });
-  assert(keepTogetherPhrases.includes("hyaluronic acid"));
-  assert(keepTogetherPhrases.includes("based supplies"));
+  assert(keepTogetherPhrases.includes("project timeline"));
+  assert(keepTogetherPhrases.includes("subtitle generator"));
 }
 
 {
@@ -129,7 +129,7 @@ function assertNoMixedSentenceBoundary(srt) {
     "00:00:03,000 --> 00:00:04,000",
     "word."
   ].join("\n");
-  const cleaned = postProcessSrtText(fallbackSrt, ["skin tone"]);
+  const cleaned = postProcessSrtText(fallbackSrt, ["video file"]);
   assertNoPeriods(cleaned);
   assertNoCaptionEndsWithPunctuation(cleaned);
   assertNoMixedSentenceBoundary(cleaned);
@@ -139,20 +139,20 @@ function assertNoMixedSentenceBoundary(srt) {
   const misspelledSrt = [
     "1",
     "00:00:00,000 --> 00:00:01,000",
-    "balm by base Supplies"
+    "edited with subtitle generater"
   ].join("\n");
-  const updated = applySrtRules(misspelledSrt, subtitleDefaults, ["Based Supplies"], [
-    { original: "base Supplies", replacement: "Based Supplies" }
+  const updated = applySrtRules(misspelledSrt, subtitleDefaults, ["Subtitle Generator"], [
+    { original: "subtitle generater", replacement: "Subtitle Generator" }
   ]);
-  assert(cueTexts(updated).some((text) => text.includes("Based Supplies")), `Expected local spelling rule to apply:\n${updated}`);
-  assert(!cueTexts(updated).some((text) => text.includes("base Supplies")), `Expected original spelling to be replaced:\n${updated}`);
+  assert(cueTexts(updated).some((text) => text.includes("Subtitle Generator")), `Expected local spelling rule to apply:\n${updated}`);
+  assert(!cueTexts(updated).some((text) => text.includes("subtitle generater")), `Expected original spelling to be replaced:\n${updated}`);
 }
 
 {
   const existingSrt = [
     "1",
     "00:00:03,401 --> 00:00:04,861",
-    "Cleopatra was considered.",
+    "Maya was considered.",
     "",
     "2",
     "00:00:04,881 --> 00:00:05,902",
@@ -162,7 +162,7 @@ function assertNoMixedSentenceBoundary(srt) {
     "00:00:05,962 --> 00:00:07,262",
     "alive, and her entire"
   ].join("\n");
-  const updated = applySrtRules(existingSrt, subtitleDefaults, ["skin tone"]);
+  const updated = applySrtRules(existingSrt, subtitleDefaults, ["video file"]);
   const times = parseTimes(updated);
   for (let index = 0; index < times.length - 1; index += 1) {
     assert.strictEqual(times[index][1], times[index + 1][0], `Apply Rules should remove gap between cue ${index + 1} and ${index + 2}`);
@@ -175,21 +175,21 @@ function assertNoMixedSentenceBoundary(srt) {
   const awkwardSrt = [
     "1",
     "00:00:01,080 --> 00:00:01,580",
-    "women's skin",
+    "review the video",
     "",
     "2",
     "00:00:01,580 --> 00:00:03,401",
-    "clear for 5,000 years",
+    "file for 5,000 years",
     "",
     "3",
     "00:00:03,401 --> 00:00:04,523",
-    "Ancient Egyptians applied",
+    "Editors reviewed",
     "",
     "4",
     "00:00:04,523 --> 00:00:06,142",
-    "it to wounds, cleopatra"
+    "it with clients, maya"
   ].join("\n");
-  const updated = applySrtRules(awkwardSrt, subtitleDefaults, ["skin tone"]);
+  const updated = applySrtRules(awkwardSrt, subtitleDefaults, ["video file"]);
   const texts = cueTexts(updated);
   assert(!texts.some((text) => /^it to\b/i.test(text)), `Expected not to start caption with lower-case continuation 'it to':\n${updated}`);
 }
@@ -208,7 +208,7 @@ function assertNoMixedSentenceBoundary(srt) {
     "00:00:27,708 --> 00:00:28,428",
     "It fades dark"
   ].join("\n");
-  const updated = applySrtRules(sentenceStartSrt, subtitleDefaults, ["skin tone"]);
+  const updated = applySrtRules(sentenceStartSrt, subtitleDefaults, ["video file"]);
   assert(!cueTexts(updated).some((text) => /\bbreakouts It\b/.test(text)), `Expected not to glue capitalized sentence start:\n${updated}`);
 }
 
@@ -216,25 +216,25 @@ function assertNoMixedSentenceBoundary(srt) {
   const clauseSrt = [
     "1",
     "00:00:15,464 --> 00:00:18,205",
-    "Ancient Egyptians applied it to wounds, cleopatra",
+    "Editors reviewed it with clients, maya",
     "",
     "2",
     "00:00:18,205 --> 00:00:21,486",
-    "bathed in it, Greek physicians mixed it into ointments for burns",
+    "presented it, Reviewers approved it for the final project",
     "",
     "3",
     "00:00:21,486 --> 00:00:24,047",
-    "For thousands of years, honey wasn't just something you"
+    "For thousands of years, captions weren't just something you"
   ].join("\n");
-  const updated = applySrtRules(clauseSrt, subtitleDefaults, ["skin tone"]);
+  const updated = applySrtRules(clauseSrt, subtitleDefaults, ["video file"]);
   const texts = cueTexts(updated);
-  assert(texts.some((text) => /^cleopatra\b/i.test(text)), `Expected Cleopatra clause to start its own caption:\n${updated}`);
-  assert(texts.some((text) => /^Greek\b/.test(text)), `Expected Greek clause to start its own caption:\n${updated}`);
-  assert(texts.some((text) => /^honey\b/i.test(text)), `Expected honey clause to start its own caption:\n${updated}`);
+  assert(texts.some((text) => /^maya\b/i.test(text)), `Expected Maya clause to start its own caption:\n${updated}`);
+  assert(texts.some((text) => /^Reviewers\b/.test(text)), `Expected Reviewers clause to start its own caption:\n${updated}`);
+  assert(texts.some((text) => /^captions\b/i.test(text)), `Expected captions clause to start its own caption:\n${updated}`);
 }
 
 {
-  const srt = buildSrt("Cleopatra was considered the most beautiful woman alive and her entire skincare routine came down to this one ingredient.");
+  const srt = buildSrt("Maya was considered the strongest presenter and the entire review process came down to this one decision.");
   const times = parseTimes(srt);
   for (let index = 0; index < times.length - 1; index += 1) {
     assert.strictEqual(times[index][1], times[index + 1][0], `Expected zero caption gap between cue ${index + 1} and ${index + 2}`);
