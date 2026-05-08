@@ -1,0 +1,13 @@
+{
+  "name": "based-subtitle-generator",
+  "version": "0.1.0",
+  "description": "Desktop subtitle generator for Premiere workflows using Gladia.",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/renderer.js && node tests/srt-rules.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "^30.5.1"
+  }
+}

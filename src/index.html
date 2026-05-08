@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Based Subtitle Generator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div>
+          <h1>Based Subtitle Generator</h1>
+          <p>Gladia-powered SRT creation for Premiere workflows.</p>
+        </div>
+        <nav class="nav-tabs" aria-label="Sections">
+          <button class="tab active" data-view="jobs">Jobs</button>
+          <button class="tab" data-view="dictionary">Dictionary</button>
+          <button class="tab" data-view="settings">Settings</button>
+          <button class="tab" data-view="history">History</button>
+        </nav>
+      </aside>
+
+      <section class="content">
+        <section class="view active" id="jobs-view">
+          <header class="view-header">
+            <div>
+              <h2>Subtitle Jobs</h2>
+              <p>Batch process MP4/MOV files, review the generated SRT, then export.</p>
+            </div>
+            <div class="toolbar">
+              <button id="add-files">Add Files</button>
+              <button id="start-batch" class="primary">Start Batch</button>
+            </div>
+          </header>
+
+          <div class="job-layout">
+            <section class="panel queue-panel">
+              <div class="panel-header">
+                <h3>Queue</h3>
+                <button id="clear-queue" class="ghost">Clear</button>
+              </div>
+              <div id="queue-list" class="queue-list empty">No files added yet.</div>
+            </section>
+
+            <section class="panel editor-panel">
+              <div class="panel-header">
+                <h3>SRT Review</h3>
+                <div class="toolbar">
+                  <button id="apply-rules" disabled>Apply Rules</button>
+                  <button id="save-srt" class="primary" disabled>Save SRT</button>
+                </div>
+              </div>
+              <textarea id="srt-editor" spellcheck="false" placeholder="Generated subtitles will appear here for review."></textarea>
+              <div id="editor-status" class="status-line">Waiting for a completed job.</div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="dictionary-view">
+          <header class="view-header">
+            <div>
+              <h2>Global Dictionary</h2>
+              <p>Vocabulary handles phonetic misses. Spelling rules handle exact replacements.</p>
+            </div>
+            <button id="save-dictionary" class="primary">Save Dictionary</button>
+          </header>
+
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Custom Vocabulary</h3>
+                <button id="add-vocab">Add Term</button>
+              </div>
+              <label class="field compact">
+                Default intensity
+                <input id="vocab-intensity" type="number" min="0" max="1" step="0.05" />
+              </label>
+              <div id="vocab-list" class="rule-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Custom Spelling</h3>
+                <button id="add-spelling">Add Rule</button>
+              </div>
+              <div id="spelling-list" class="rule-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="settings-view">
+          <header class="view-header">
+            <div>
+              <h2>Settings</h2>
+              <p>These defaults are used for every new transcription job.</p>
+            </div>
+            <button id="save-settings" class="primary">Save Settings</button>
+          </header>
+
+          <section class="panel settings-grid">
+            <label class="field wide">
+              Gladia API key
+              <input id="api-key" type="password" autocomplete="off" placeholder="Paste API key locally" />
+            </label>
+            <label class="field output-field">
+              Output folder
+              <input id="output-folder" type="text" readonly />
+              <button id="choose-output">Choose</button>
+            </label>
+            <label class="field">
+              Max characters per row
+              <input id="max-chars" type="number" min="1" />
+            </label>
+            <label class="field">
+              Max rows per caption
+              <input id="max-rows" type="number" min="1" max="5" />
+            </label>
+            <label class="field">
+              Minimum duration
+              <input id="min-duration" type="number" min="0" step="0.25" />
+            </label>
+            <label class="field">
+              Target duration
+              <input id="target-duration" type="number" min="0.25" max="10" step="0.05" />
+            </label>
+            <label class="field">
+              Maximum duration cap
+              <input id="max-duration" type="number" min="1" max="30" step="0.25" />
+            </label>
+            <label class="field">
+              Gap between captions
+              <input id="caption-gap" type="number" min="0" max="1" step="0.01" />
+            </label>
+            <label class="field">
+              Split after silence
+              <input id="silence-gap" type="number" min="0" max="3" step="0.05" />
+            </label>
+            <label class="field">
+              Subtitle style
+              <select id="subtitle-style">
+                <option value="compliance">Compliance</option>
+                <option value="default">Default</option>
+              </select>
+            </label>
+          </section>
+        </section>
+
+        <section class="view" id="history-view">
+          <header class="view-header">
+            <div>
+              <h2>Job History</h2>
+              <p>Saved locally per user on this computer.</p>
+            </div>
+            <button id="clear-history" class="danger">Clear History</button>
+          </header>
+          <section class="panel">
+            <div id="history-list" class="history-list empty">No completed jobs yet.</div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

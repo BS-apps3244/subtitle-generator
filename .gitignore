@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Electron and build output
+dist/
+out/
+release/
+*.asar
+
+# Logs and diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+
+# OS/editor metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Large local media/test exports
+*.mp4
+*.mov
+*.m4v
+*.mp3
+*.wav
+*.aac
+*.flac
+*.srt
+
