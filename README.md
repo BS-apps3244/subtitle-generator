@@ -1,4 +1,4 @@
-﻿# Based Subtitle Generator
+﻿# Subtitle Generator
 
 Desktop app for creating editable SRT subtitle files from MP4/MOV files using Gladia.
 
