@@ -1,9 +1,12 @@
 const electron = process.versions.electron ? require("electron") : {};
-const { app, BrowserWindow, dialog, ipcMain } = electron;
+const { app, BrowserWindow, dialog, ipcMain, shell } = electron;
 const fs = require("fs");
 const path = require("path");
+const packageInfo = require("../package.json");
 
 const GLADIA_BASE_URL = "https://api.gladia.io/v2";
+const RELEASES_API_URL = "https://api.github.com/repos/BS-apps3244/subtitle-generator/releases/latest";
+const RELEASES_PAGE_URL = "https://github.com/BS-apps3244/subtitle-generator/releases/latest";
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLL_ATTEMPTS = 450;
 const BAD_END_WORDS = new Set([
@@ -114,6 +117,90 @@ function writeSettings(settings) {
   return readSettings();
 }
 
+async function checkForRequiredUpdate() {
+  const currentVersion = packageInfo.version || app.getVersion();
+  const release = await fetchLatestRelease();
+  if (!release.ok) {
+    return {
+      currentVersion,
+      updateRequired: false,
+      checkFailed: true,
+      message: release.message,
+      updateUrl: ""
+    };
+  }
+
+  const latestVersion = normalizeVersion(release.tagName || release.name || "");
+  const updateRequired = isVersionNewer(latestVersion, currentVersion);
+  return {
+    currentVersion,
+    latestVersion,
+    updateRequired,
+    checkFailed: false,
+    message: "",
+    updateUrl: release.releaseUrl || RELEASES_PAGE_URL
+  };
+}
+
+async function fetchLatestRelease() {
+  if (typeof fetch !== "function") {
+    return { ok: false, message: "This version cannot check for updates automatically." };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(RELEASES_API_URL, {
+      headers: {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Based-Subtitle-Generator"
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      return { ok: false, message: `Update check failed with GitHub status ${response.status}.` };
+    }
+
+    const release = await response.json();
+    return {
+      ok: true,
+      tagName: release.tag_name,
+      name: release.name,
+      releaseUrl: release.html_url
+    };
+  } catch (error) {
+    return { ok: false, message: `Update check failed: ${error.message}` };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeVersion(version) {
+  return String(version || "").trim().replace(/^v/i, "");
+}
+
+function isVersionNewer(candidate, current) {
+  const candidateParts = normalizeVersion(candidate).split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const currentParts = normalizeVersion(current).split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const length = Math.max(candidateParts.length, currentParts.length, 3);
+  for (let index = 0; index < length; index += 1) {
+    const candidatePart = candidateParts[index] || 0;
+    const currentPart = currentParts[index] || 0;
+    if (candidatePart > currentPart) return true;
+    if (candidatePart < currentPart) return false;
+  }
+  return false;
+}
+
+function isSafeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -146,6 +233,16 @@ ipcMain.handle("settings:get", () => readSettings());
 
 ipcMain.handle("settings:save", (_event, nextSettings) => {
   return writeSettings(nextSettings);
+});
+
+ipcMain.handle("updates:check", async () => {
+  return checkForRequiredUpdate();
+});
+
+ipcMain.handle("updates:open-url", async (_event, updateUrl) => {
+  if (!isSafeExternalUrl(updateUrl)) return false;
+  await shell.openExternal(updateUrl);
+  return true;
 });
 
 ipcMain.handle("files:pick-inputs", async () => {
@@ -306,7 +403,7 @@ async function startTranscription(apiKey, audioUrl, payload) {
     sentences: true,
     punctuation_enhanced: true,
     custom_metadata: {
-      source_app: "based-subtitle-generator",
+      source_app: "subtitle-generator",
       source_filename: payload.filePath ? path.basename(payload.filePath) : undefined
     }
   };

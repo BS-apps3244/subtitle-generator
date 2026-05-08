@@ -2,7 +2,8 @@ const state = {
   settings: null,
   queue: [],
   selectedFilePath: "",
-  completed: new Map()
+  completed: new Map(),
+  updateUrl: ""
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -13,12 +14,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   bindSettings();
   bindDictionary();
   bindHistory();
+  bindUpdates();
   window.subtitleApp.onJobProgress(updateJobProgress);
   state.settings = await window.subtitleApp.getSettings();
   hydrateSettings();
   renderDictionary();
   renderHistory();
   renderQueue();
+  await checkForUpdates();
 });
 
 function bindTabs() {
@@ -91,6 +94,39 @@ function bindHistory() {
     state.settings = await window.subtitleApp.clearHistory();
     renderHistory();
   });
+}
+
+function bindUpdates() {
+  $("#dismiss-update").addEventListener("click", () => $("#update-gate").classList.add("hidden"));
+  $("#open-release").addEventListener("click", () => {
+    if (state.updateUrl) window.subtitleApp.openUpdateUrl(state.updateUrl);
+  });
+}
+
+async function checkForUpdates() {
+  const gate = $("#update-gate");
+  const message = $("#update-message");
+  gate.classList.add("hidden");
+
+  try {
+    const result = await window.subtitleApp.checkForUpdates();
+    if (result.updateRequired) {
+      state.updateUrl = result.updateUrl || "";
+      message.textContent = result.message || `This app is version ${result.currentVersion}. Version ${result.latestVersion} is available. You can update now or keep working and update later.`;
+      $("#open-release").hidden = !state.updateUrl;
+      gate.classList.remove("hidden");
+      return;
+    }
+
+    if (result.checkFailed) {
+      setStatus(`${result.message} You can keep using the app.`);
+      return;
+    }
+
+    gate.classList.add("hidden");
+  } catch (error) {
+    setStatus(`Update check failed: ${error.message}. You can keep using the app.`);
+  }
 }
 
 function hydrateSettings() {

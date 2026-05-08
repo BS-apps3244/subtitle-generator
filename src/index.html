@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="update-gate" class="update-gate hidden" role="dialog" aria-modal="false" aria-labelledby="update-title">
+      <section class="update-card">
+        <p class="update-kicker">Update available</p>
+        <h2 id="update-title">A newer version is ready</h2>
+        <p id="update-message">Checking for updates...</p>
+        <div class="update-actions">
+          <button id="dismiss-update" type="button">Later</button>
+          <button id="open-release" class="primary" type="button">Update Now</button>
+        </div>
+      </section>
+    </div>
+
     <main class="app-shell">
       <aside class="sidebar">
         <div>

@@ -1,13 +1,49 @@
 {
-  "name": "based-subtitle-generator",
+  "name": "subtitle-generator",
   "version": "0.1.0",
   "description": "Desktop subtitle generator for Premiere workflows using Gladia.",
+  "author": "Based Supplies",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/renderer.js && node tests/srt-rules.test.cjs"
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/renderer.js && node tests/srt-rules.test.cjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.basedsupplies.subtitlegenerator",
+    "productName": "Based Subtitle Generator",
+    "directories": {
+      "output": "dist"
+    },
+    "npmRebuild": false,
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "devDependencies": {
-    "electron": "^30.5.1"
+    "electron": "^30.5.1",
+    "electron-builder": "^26.8.1"
   }
 }

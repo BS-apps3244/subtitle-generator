@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("subtitleApp", {
   saveSrt: (payload) => ipcRenderer.invoke("srt:save", payload),
   clearHistory: () => ipcRenderer.invoke("history:clear"),
   loadHistorySrt: (historyId) => ipcRenderer.invoke("history:load-srt", historyId),
+  checkForUpdates: () => ipcRenderer.invoke("updates:check"),
+  openUpdateUrl: (updateUrl) => ipcRenderer.invoke("updates:open-url", updateUrl),
   onJobProgress: (callback) => {
     ipcRenderer.on("job:progress", (_event, data) => callback(data));
   }

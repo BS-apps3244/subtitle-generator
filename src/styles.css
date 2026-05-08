@@ -63,6 +63,54 @@ button.danger {
   border-color: var(--danger);
 }
 
+.update-gate {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  display: block;
+  width: min(460px, calc(100vw - 48px));
+}
+
+.update-gate.hidden {
+  display: none;
+}
+
+.update-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px;
+  background: var(--paper);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.2);
+}
+
+.update-kicker {
+  margin: 0 0 8px;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.update-card h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.update-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 270px 1fr;

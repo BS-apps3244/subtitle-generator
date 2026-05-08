@@ -22,6 +22,28 @@ npm run check
 
 The app stores the Gladia API key and preferences in Electron's user data directory on the local machine.
 
+## Build Installer
+
+Create a local Windows installer:
+
+```powershell
+npm run dist
+```
+
+The installer is written to `dist/`.
+
+## Update Prompts
+
+The app checks the latest GitHub Release on startup:
+
+```text
+https://github.com/BS-apps3244/subtitle-generator/releases/latest
+```
+
+If the installed version is older than the newest release tag, the app shows an update prompt with Update Now and Later options. Editors can continue working if they choose Later.
+
+The release tag should match the version in `package.json`, such as `v0.1.1` for version `0.1.1`. Do not embed GitHub tokens in the app. Packaged Electron apps can be unpacked, and embedded tokens can be extracted.
+
 ## Current Features
 
 - Batch MP4/MOV/M4V/audio file queue
@@ -51,6 +73,20 @@ npm start
 ```
 
 Each editor needs their own Gladia API key saved in the app settings. API keys are stored locally and should not be committed to GitHub.
+
+## Publish a Release
+
+Update the version in `package.json`, commit the change, then create and push a matching tag:
+
+```powershell
+git add .
+git commit -m "Release v0.1.1"
+git tag v0.1.1
+git push
+git push origin v0.1.1
+```
+
+GitHub Actions will build the Windows installer and attach it to a GitHub Release. Editors can download the `.exe` from the repository's Releases page.
 
 ## Notes
 
