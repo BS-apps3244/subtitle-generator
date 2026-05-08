@@ -1,6 +1,6 @@
 {
   "name": "subtitle-generator",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Desktop subtitle generator for Premiere workflows using Gladia.",
   "author": "Subtitle Generator Contributors",
   "main": "src/main.cjs",
@@ -16,6 +16,13 @@
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "BS-apps3244",
+        "repo": "subtitle-generator"
+      }
+    ],
     "npmRebuild": false,
     "files": [
       "src/**/*",
@@ -41,6 +48,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "electron": "^30.5.1",

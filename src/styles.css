@@ -139,6 +139,13 @@ button.danger {
   line-height: 1.45;
 }
 
+.app-version {
+  margin-top: 14px;
+  color: #bfb7a8;
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .nav-tabs {
   display: grid;
   gap: 8px;

@@ -11,7 +11,12 @@ contextBridge.exposeInMainWorld("subtitleApp", {
   clearHistory: () => ipcRenderer.invoke("history:clear"),
   loadHistorySrt: (historyId) => ipcRenderer.invoke("history:load-srt", historyId),
   checkForUpdates: () => ipcRenderer.invoke("updates:check"),
+  downloadAndInstallUpdate: () => ipcRenderer.invoke("updates:download-and-install"),
   openUpdateUrl: (updateUrl) => ipcRenderer.invoke("updates:open-url", updateUrl),
+  getAppVersion: () => ipcRenderer.invoke("app:version"),
+  onUpdateEvent: (callback) => {
+    ipcRenderer.on("updates:event", (_event, data) => callback(data));
+  },
   onJobProgress: (callback) => {
     ipcRenderer.on("job:progress", (_event, data) => callback(data));
   }

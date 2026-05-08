@@ -3,7 +3,8 @@ const state = {
   queue: [],
   selectedFilePath: "",
   completed: new Map(),
-  updateUrl: ""
+  updateUrl: "",
+  updateAvailable: false
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -16,6 +17,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   bindHistory();
   bindUpdates();
   window.subtitleApp.onJobProgress(updateJobProgress);
+  window.subtitleApp.onUpdateEvent(updateInstallProgress);
+  $("#app-version").textContent = `Version ${await window.subtitleApp.getAppVersion()}`;
   state.settings = await window.subtitleApp.getSettings();
   hydrateSettings();
   renderDictionary();
@@ -98,9 +101,7 @@ function bindHistory() {
 
 function bindUpdates() {
   $("#dismiss-update").addEventListener("click", () => $("#update-gate").classList.add("hidden"));
-  $("#open-release").addEventListener("click", () => {
-    if (state.updateUrl) window.subtitleApp.openUpdateUrl(state.updateUrl);
-  });
+  $("#open-release").addEventListener("click", installUpdate);
 }
 
 async function checkForUpdates() {
@@ -112,8 +113,11 @@ async function checkForUpdates() {
     const result = await window.subtitleApp.checkForUpdates();
     if (result.updateRequired) {
       state.updateUrl = result.updateUrl || "";
+      state.updateAvailable = true;
       message.textContent = result.message || `This app is version ${result.currentVersion}. Version ${result.latestVersion} is available. You can update now or keep working and update later.`;
-      $("#open-release").hidden = !state.updateUrl;
+      $("#open-release").hidden = false;
+      $("#open-release").disabled = false;
+      $("#open-release").textContent = "Update Now";
       gate.classList.remove("hidden");
       return;
     }
@@ -126,6 +130,53 @@ async function checkForUpdates() {
     gate.classList.add("hidden");
   } catch (error) {
     setStatus(`Update check failed: ${error.message}. You can keep using the app.`);
+  }
+}
+
+async function installUpdate() {
+  if (!state.updateAvailable) return;
+  const message = $("#update-message");
+  const button = $("#open-release");
+  button.disabled = true;
+  button.textContent = "Preparing...";
+  message.textContent = "Preparing the update download...";
+
+  try {
+    const result = await window.subtitleApp.downloadAndInstallUpdate();
+    if (result && result.started === false) {
+      message.textContent = result.message;
+      button.disabled = false;
+      button.textContent = "Update Now";
+    }
+  } catch (error) {
+    message.textContent = `Update failed: ${error.message}`;
+    button.disabled = false;
+    button.textContent = "Try Again";
+  }
+}
+
+function updateInstallProgress(event) {
+  const gate = $("#update-gate");
+  const message = $("#update-message");
+  const button = $("#open-release");
+  gate.classList.remove("hidden");
+
+  if (event.status === "checking") {
+    message.textContent = "Checking the update package...";
+    button.disabled = true;
+    button.textContent = "Preparing...";
+  } else if (event.status === "downloading") {
+    message.textContent = `Downloading update${Number.isFinite(event.percent) ? ` (${event.percent}%)` : ""}...`;
+    button.disabled = true;
+    button.textContent = "Downloading...";
+  } else if (event.status === "installing") {
+    message.textContent = "Update downloaded. The app will restart to install it.";
+    button.disabled = true;
+    button.textContent = "Installing...";
+  } else if (event.status === "error") {
+    message.textContent = event.message || "Update failed.";
+    button.disabled = false;
+    button.textContent = "Try Again";
   }
 }
 

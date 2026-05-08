@@ -40,7 +40,7 @@ The app checks the latest GitHub Release on startup:
 https://github.com/BS-apps3244/subtitle-generator/releases/latest
 ```
 
-If the installed version is older than the newest release tag, the app shows an update prompt with Update Now and Later options. Editors can continue working if they choose Later.
+If the installed version is older than the newest release tag, the app shows an update prompt with Update Now and Later options. Editors can continue working if they choose Later. In packaged releases, Update Now downloads the latest installer inside the app and restarts to install it.
 
 The release tag should match the version in `package.json`, such as `v0.1.1` for version `0.1.1`. Do not embed GitHub tokens in the app. Packaged Electron apps can be unpacked, and embedded tokens can be extracted.
 

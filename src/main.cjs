@@ -3,6 +3,14 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = electron;
 const fs = require("fs");
 const path = require("path");
 const packageInfo = require("../package.json");
+let autoUpdater = null;
+if (process.versions.electron) {
+  try {
+    ({ autoUpdater } = require("electron-updater"));
+  } catch {
+    autoUpdater = null;
+  }
+}
 
 const GLADIA_BASE_URL = "https://api.gladia.io/v2";
 const RELEASES_API_URL = "https://api.github.com/repos/BS-apps3244/subtitle-generator/releases/latest";
@@ -59,6 +67,7 @@ const CLAUSE_VERBS = new Set([
 ]);
 
 let mainWindow;
+let autoUpdaterConfigured = false;
 
 const defaultSettings = {
   apiKey: "",
@@ -119,7 +128,7 @@ function writeSettings(settings) {
 }
 
 async function checkForRequiredUpdate() {
-  const currentVersion = packageInfo.version || app.getVersion();
+  const currentVersion = getCurrentVersion();
   const release = await fetchLatestRelease();
   if (!release.ok) {
     return {
@@ -141,6 +150,10 @@ async function checkForRequiredUpdate() {
     message: "",
     updateUrl: release.releaseUrl || RELEASES_PAGE_URL
   };
+}
+
+function getCurrentVersion() {
+  return packageInfo.version || (app && app.getVersion ? app.getVersion() : "0.0.0");
 }
 
 async function fetchLatestRelease() {
@@ -202,6 +215,60 @@ function isSafeExternalUrl(value) {
   }
 }
 
+function configureAutoUpdater() {
+  if (!autoUpdater || autoUpdaterConfigured) return;
+  autoUpdaterConfigured = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.setFeedURL({
+    provider: "github",
+    owner: "BS-apps3244",
+    repo: "subtitle-generator"
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    sendUpdateEvent({
+      status: "downloading",
+      percent: Math.round(progress.percent || 0)
+    });
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    sendUpdateEvent({ status: "installing" });
+    setTimeout(() => autoUpdater.quitAndInstall(false, true), 600);
+  });
+
+  autoUpdater.on("error", (error) => {
+    sendUpdateEvent({
+      status: "error",
+      message: error.message || "Update failed."
+    });
+  });
+}
+
+function sendUpdateEvent(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("updates:event", payload);
+  }
+}
+
+async function downloadAndInstallUpdate() {
+  if (!autoUpdater || !app.isPackaged) {
+    await shell.openExternal(RELEASES_PAGE_URL);
+    return {
+      started: false,
+      message: "Automatic installation is available in the packaged app. Opening the release page instead."
+    };
+  }
+
+  configureAutoUpdater();
+  sendUpdateEvent({ status: "checking" });
+  await autoUpdater.checkForUpdates();
+  sendUpdateEvent({ status: "downloading", percent: 0 });
+  await autoUpdater.downloadUpdate();
+  return { started: true };
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -220,7 +287,10 @@ function createWindow() {
 }
 
 if (app) {
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  configureAutoUpdater();
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -236,8 +306,14 @@ ipcMain.handle("settings:save", (_event, nextSettings) => {
   return writeSettings(nextSettings);
 });
 
+ipcMain.handle("app:version", () => getCurrentVersion());
+
 ipcMain.handle("updates:check", async () => {
   return checkForRequiredUpdate();
+});
+
+ipcMain.handle("updates:download-and-install", async () => {
+  return downloadAndInstallUpdate();
 });
 
 ipcMain.handle("updates:open-url", async (_event, updateUrl) => {
