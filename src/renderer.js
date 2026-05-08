@@ -4,10 +4,13 @@ const state = {
   selectedFilePath: "",
   completed: new Map(),
   updateUrl: "",
-  updateAvailable: false
+  updateAvailable: false,
+  updateVersion: "",
+  dismissedUpdateVersion: ""
 };
 
 const $ = (selector) => document.querySelector(selector);
+const UPDATE_CHECK_INTERVAL_MS = 60 * 1000;
 
 window.addEventListener("DOMContentLoaded", async () => {
   bindTabs();
@@ -25,6 +28,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   renderHistory();
   renderQueue();
   await checkForUpdates();
+  window.setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
 });
 
 function bindTabs() {
@@ -100,7 +104,10 @@ function bindHistory() {
 }
 
 function bindUpdates() {
-  $("#dismiss-update").addEventListener("click", () => $("#update-gate").classList.add("hidden"));
+  $("#dismiss-update").addEventListener("click", () => {
+    state.dismissedUpdateVersion = state.updateVersion;
+    $("#update-gate").classList.add("hidden");
+  });
   $("#open-release").addEventListener("click", installUpdate);
 }
 
@@ -114,6 +121,8 @@ async function checkForUpdates() {
     if (result.updateRequired) {
       state.updateUrl = result.updateUrl || "";
       state.updateAvailable = true;
+      state.updateVersion = result.latestVersion || "";
+      if (state.dismissedUpdateVersion === state.updateVersion) return;
       message.textContent = result.message || `This app is version ${result.currentVersion}. Version ${result.latestVersion} is available. You can update now or keep working and update later.`;
       $("#open-release").hidden = false;
       $("#open-release").disabled = false;
