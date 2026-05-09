@@ -1,6 +1,6 @@
 {
   "name": "subtitle-generator",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Desktop subtitle generator for Premiere workflows using Gladia.",
   "author": "Subtitle Generator Contributors",
   "main": "src/main.cjs",

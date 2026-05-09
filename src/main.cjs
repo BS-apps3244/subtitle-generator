@@ -618,7 +618,7 @@ function buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrase
 
   const adjustedCues = applyCaptionGaps(enforceMinimumDuration(mergeSingleWordCues(cues), settings), settings);
   return adjustedCues.map((cue, index) => {
-    const lines = wrapSubtitleText(cue.text, Number(subtitleDefaults.maximum_characters_per_row || 42));
+    const lines = wrapSubtitleText(cue.text, settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
     return `${index + 1}\n${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}\n${lines}`;
   }).join("\n\n");
 }
@@ -633,7 +633,8 @@ function normalizeSubtitleSettings(subtitleDefaults) {
     captionGap: Number(subtitleDefaults.caption_gap || 0),
     splitOnSilenceGap: Number(subtitleDefaults.split_on_silence_gap || 0.35),
     maximumCharactersPerCaption: maximumCharactersPerRow * maximumRowsPerCaption,
-    maximumCharactersPerRow
+    maximumCharactersPerRow,
+    maximumRowsPerCaption
   };
 }
 
@@ -670,6 +671,9 @@ function chooseNaturalCueEnd(words, startIndex, settings, keepTogetherPhrases) {
     const nextWord = words[index + 1];
     const silenceGap = nextWord ? nextWord.start - words[index].end : 0;
 
+    if (text.length > settings.maximumCharactersPerCaption && index > startIndex) {
+      return avoidBadFinalBreak(words, startIndex, index - 1, keepTogetherPhrases);
+    }
     hardEnd = index;
     if (endsSentence(text)) return index;
     if (silenceGap > settings.splitOnSilenceGap) return avoidBadFinalBreak(words, startIndex, index, keepTogetherPhrases);
@@ -851,7 +855,8 @@ function postProcessSrtText(
   subtitleDefaults = defaultSettings.subtitleDefaults,
   spellingRules = []
 ) {
-  return formatSrtCues(postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules));
+  const settings = normalizeSubtitleSettings(subtitleDefaults);
+  return formatSrtCues(postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules), settings);
 }
 
 function applySrtRules(srtText, subtitleDefaults, keepTogetherPhrases, spellingRules = []) {
@@ -859,7 +864,7 @@ function applySrtRules(srtText, subtitleDefaults, keepTogetherPhrases, spellingR
   return formatSrtCues(applyCaptionGapsToSrtCues(
     postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules),
     settings
-  ));
+  ), settings);
 }
 
 function postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules = []) {
@@ -873,12 +878,13 @@ function postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spel
     }))
     .filter((cue) => cue.text);
 
-  return smoothAwkwardSrtBreaks(mergeSingleWordSrtCues(cleanedCues), settings, keepTogetherPhrases).map((cue) => ({
+  const smoothedCues = smoothAwkwardSrtBreaks(mergeSingleWordSrtCues(cleanedCues), settings, keepTogetherPhrases).map((cue) => ({
     ...cue,
     text: cleanSubtitleText(applyLocalSpellingRules(cue.text, spellingRules))
         .replace(/[.!?,]+$/g, "")
         .trim()
   })).filter((cue) => cue.text);
+  return splitLongSrtCues(smoothedCues, settings, keepTogetherPhrases);
 }
 
 function applyLocalSpellingRules(text, spellingRules) {
@@ -909,8 +915,55 @@ function applyCaptionGapsToSrtCues(cues, settings) {
   });
 }
 
-function formatSrtCues(cues) {
-  return cues.map((cue, index) => `${index + 1}\n${cue.timing}\n${cue.text}`).join("\n\n");
+function splitLongSrtCues(cues, settings, keepTogetherPhrases) {
+  return cues.flatMap((cue) => {
+    const text = cleanSubtitleText(cue.text);
+    if (text.length <= settings.maximumCharactersPerCaption) return [{ ...cue, text }];
+
+    const pieces = splitTextToCaptionBudget(text, settings, keepTogetherPhrases);
+    if (pieces.length <= 1) return [{ ...cue, text }];
+
+    return splitTimingAcrossPieces(cue.timing, pieces).map((piece) => ({
+      timing: piece.timing,
+      text: piece.text
+    }));
+  });
+}
+
+function splitTextToCaptionBudget(text, settings, keepTogetherPhrases) {
+  const words = tokenList(text);
+  if (words.length <= 1) return [text];
+
+  const pieces = [];
+  let startIndex = 0;
+  while (startIndex < words.length) {
+    const endIndex = chooseCaptionBudgetEnd(words, startIndex, settings, keepTogetherPhrases);
+    pieces.push(words.slice(startIndex, endIndex + 1).join(" "));
+    startIndex = endIndex + 1;
+  }
+  return pieces;
+}
+
+function chooseCaptionBudgetEnd(words, startIndex, settings, keepTogetherPhrases) {
+  let endIndex = startIndex;
+  for (let index = startIndex; index < words.length; index += 1) {
+    const text = words.slice(startIndex, index + 1).join(" ");
+    if (text.length > settings.maximumCharactersPerCaption && index > startIndex) break;
+    if (text.length <= settings.maximumCharactersPerCaption) endIndex = index;
+  }
+
+  let safeEnd = Math.max(startIndex, endIndex);
+  while (safeEnd > startIndex && wouldBreakProtectedPhraseAt(words.map((text) => ({ text })), safeEnd, keepTogetherPhrases)) {
+    safeEnd -= 1;
+  }
+  return safeEnd;
+}
+
+function formatSrtCues(cues, settings = normalizeSubtitleSettings(defaultSettings.subtitleDefaults)) {
+  return cues.map((cue, index) => {
+    const text = wrapSubtitleText(cue.text, settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
+    return `${index + 1}\n${cue.timing}\n${text}`;
+  }).join("\n\n");
 }
 
 function smoothAwkwardSrtBreaks(cues, settings, keepTogetherPhrases) {
@@ -1287,14 +1340,14 @@ function endsSentence(text) {
   return /[.!?]["')\]]?$/.test(String(text).trim());
 }
 
-function wrapSubtitleText(text, maxCharactersPerRow) {
+function wrapSubtitleText(text, maxCharactersPerRow, maxRows = Infinity) {
   const words = cleanSubtitleText(text).split(/\s+/).filter(Boolean);
   const lines = [];
   let line = "";
 
   words.forEach((word) => {
     const next = line ? `${line} ${word}` : word;
-    if (next.length > maxCharactersPerRow && line) {
+    if (next.length > maxCharactersPerRow && line && lines.length + 1 < maxRows) {
       lines.push(line);
       line = word;
     } else {

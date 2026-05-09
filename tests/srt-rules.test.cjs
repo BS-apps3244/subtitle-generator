@@ -49,8 +49,18 @@ function cueTexts(srt) {
   return srt.trim().split(/\n\s*\n/).map((block) => block.split(/\r?\n/).slice(2).join(" "));
 }
 
+function cueTextLines(srt) {
+  return srt.trim().split(/\n\s*\n/).map((block) => block.split(/\r?\n/).slice(2));
+}
+
 function assertNoPeriods(srt) {
   assert(!srt.includes("."), `Expected no periods in SRT:\n${srt}`);
+}
+
+function assertMaxTextLinesPerCue(srt, maxLines) {
+  cueTextLines(srt).forEach((lines) => {
+    assert(lines.length <= maxLines, `Expected at most ${maxLines} line(s) per cue:\n${srt}`);
+  });
 }
 
 function assertNoCaptionEndsWithPunctuation(srt) {
@@ -239,6 +249,42 @@ function assertNoMixedSentenceBoundary(srt) {
   for (let index = 0; index < times.length - 1; index += 1) {
     assert.strictEqual(times[index][1], times[index + 1][0], `Expected zero caption gap between cue ${index + 1} and ${index + 2}`);
   }
+}
+
+{
+  const oneLineSettings = {
+    ...subtitleDefaults,
+    maximum_characters_per_row: 28,
+    maximum_rows_per_caption: 1
+  };
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const srt = postProcessSrtText(
+    buildSrtFromUtterances([{ words: wordsFromText("other ingredient that kept showing up over and over again") }], oneLineSettings, keepTogetherPhrases),
+    keepTogetherPhrases,
+    oneLineSettings
+  );
+  assertMaxTextLinesPerCue(srt, 1);
+  cueTexts(srt).forEach((text) => {
+    assert(text.length <= oneLineSettings.maximum_characters_per_row, `Expected cue to fit one-line budget: ${text}\n${srt}`);
+  });
+}
+
+{
+  const oneLineSettings = {
+    ...subtitleDefaults,
+    maximum_characters_per_row: 28,
+    maximum_rows_per_caption: 1
+  };
+  const existingSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "other ingredient that kept showing up over and over again"
+  ].join("\n");
+  const updated = applySrtRules(existingSrt, oneLineSettings, ["video file"]);
+  assertMaxTextLinesPerCue(updated, 1);
+  cueTexts(updated).forEach((text) => {
+    assert(text.length <= oneLineSettings.maximum_characters_per_row, `Expected Apply Rules to fit one-line budget: ${text}\n${updated}`);
+  });
 }
 
 console.log("SRT rule tests passed");
