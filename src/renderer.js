@@ -210,13 +210,13 @@ function collectSettings() {
     apiKey: $("#api-key").value.trim(),
     outputFolder: $("#output-folder").value.trim(),
     subtitleDefaults: {
-      maximum_characters_per_row: Number($("#max-chars").value || 42),
-      maximum_rows_per_caption: Number($("#max-rows").value || 2),
+      maximum_characters_per_row: Number($("#max-chars").value || 45),
+      maximum_rows_per_caption: Number($("#max-rows").value || 1),
       minimum_duration: Number($("#min-duration").value || 1),
       target_duration: Number($("#target-duration").value || 1.2),
-      maximum_duration: Number($("#max-duration").value || 2),
-      caption_gap: Number($("#caption-gap").value || 0.06),
-      split_on_silence_gap: Number($("#silence-gap").value || 0.35),
+      maximum_duration: Number($("#max-duration").value || 3),
+      caption_gap: Number($("#caption-gap").value || 0),
+      split_on_silence_gap: Number($("#silence-gap").value || 0.2),
       style: $("#subtitle-style").value
     }
   };

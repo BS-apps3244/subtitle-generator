@@ -75,11 +75,11 @@ const defaultSettings = {
   subtitleDefaults: {
     minimum_duration: 1,
     target_duration: 1.2,
-    maximum_duration: 2,
-    caption_gap: 0.06,
-    split_on_silence_gap: 0.35,
-    maximum_characters_per_row: 42,
-    maximum_rows_per_caption: 2,
+    maximum_duration: 3,
+    caption_gap: 0,
+    split_on_silence_gap: 0.2,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
     style: "compliance"
   },
   vocabularyDefaultIntensity: 0.4,
