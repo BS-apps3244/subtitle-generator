@@ -17,27 +17,43 @@ const RELEASES_API_URL = "https://api.github.com/repos/BS-apps3244/subtitle-gene
 const RELEASES_PAGE_URL = "https://github.com/BS-apps3244/subtitle-generator/releases/latest";
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLL_ATTEMPTS = 450;
-const BAD_END_WORDS = new Set([
-  "a", "an", "the", "and", "or", "but", "so", "because", "if", "when", "while",
-  "of", "to", "in", "on", "at", "by", "for", "from", "with", "without", "into",
-  "onto", "over", "under", "between", "about", "as", "than", "that", "which",
-  "who", "whose", "is", "was", "were", "are", "be", "been", "being", "has",
-  "have", "had", "can", "could", "would", "should", "will", "may", "might",
-  "must", "do", "does", "did", "not", "no", "very", "more", "most"
+const MAX_SRT_REPAIR_PASSES = 8;
+const ARTICLES = new Set(["a", "an", "the"]);
+const QUANTIFIER_DETERMINERS = new Set(["any", "every", "each", "some"]);
+const COORDINATING_CONJUNCTIONS = new Set(["and", "or", "but", "so"]);
+const SUBORDINATING_CONJUNCTIONS = new Set(["because", "if", "when", "while", "until", "than", "that", "which", "who", "whose"]);
+const PREPOSITIONS = new Set([
+  "of", "to", "in", "on", "at", "by", "for", "from", "with", "without",
+  "into", "onto", "over", "under", "between", "about", "as", "off"
 ]);
+const PHRASAL_VERB_PARTICLES = new Set([
+  "up", "down", "out", "away", "back", "through", "around", "over", "off"
+]);
+const AUXILIARY_VERBS = new Set([
+  "is", "was", "were", "are", "be", "been", "being", "has", "have", "had",
+  "can", "could", "would", "should", "will", "may", "might", "must", "do",
+  "does", "did"
+]);
+const NEGATIONS = new Set(["not", "no"]);
+const TEMPORAL_SENTENCE_STARTS = new Set(["after", "before", "first", "finally", "for", "today"]);
+const TEMPORAL_NOUNS = new Set(["night", "morning", "afternoon", "evening", "day", "week", "month", "year", "time"]);
+const DEGREE_MODIFIERS = new Set(["very", "more", "most"]);
+const POSSESSIVE_DETERMINERS = new Set(["my", "your", "his", "her", "its", "our", "their"]);
+const DEMONSTRATIVE_DETERMINERS = new Set(["this", "these", "that", "those"]);
+const SUBJECT_PRONOUNS = new Set(["i", "you", "we", "they", "he", "she", "it"]);
+const OBJECT_PRONOUNS = new Set(["me", "you", "us", "them", "him", "her", "it"]);
+const SENTENCE_START_CONTRACTIONS = new Set(["i'm", "i've", "i'll", "you're", "you'll", "you've", "it's", "that's", "there's", "they're", "we're"]);
+const QUESTION_SENTENCE_STARTS = new Set(["what", "why", "how", "where"]);
+const INCOMPLETE_END_CONTRACTIONS = new Set(["i'm", "you're", "we're", "they're", "he's", "she's", "it's", "that's", "i've", "you've", "we've", "they've", "i'll", "you'll", "we'll", "they'll"]);
+const RELATIVE_CLAUSE_ANTECEDENTS = new Set(["one", "thing", "way", "reason", "time", "place", "person"]);
+const COMPLEMENT_TAKING_VERBS = new Set(["let", "make", "help", "want", "need", "tell", "ask", "allow"]);
+const DISCOURSE_SENTENCE_STARTS = new Set(["so", "and", "but", "now", "then"]);
 const WEAK_END_WORDS = new Set([
   "kept", "applied", "mixed", "fades", "pulls", "gets", "used", "started",
   "added", "built", "seal", "keep", "put", "tried", "recommended", "said",
   "forget", "render", "burn", "make", "making", "using", "came", "went",
+  "get", "got",
   "being", "became", "causes", "caused", "has", "have", "had"
-]);
-const BAD_START_WORDS = new Set([
-  "of", "to", "for", "with", "from", "by", "than", "that", "which", "who",
-  "and", "or", "but", "because", "is", "are", "was", "were", "be"
-]);
-const WEAK_START_WORDS = new Set([
-  "it", "its", "your", "their", "our", "my", "his", "her", "that", "this",
-  "these", "those", "you", "we", "they"
 ]);
 const PAIR_START_WORDS = new Set([
   "social", "premiere", "video", "audio", "subtitle", "custom", "project",
@@ -53,6 +69,13 @@ const UNIT_WORDS = new Set([
   "week", "weeks", "month", "months", "year", "years", "percent", "dollars",
   "pounds", "ounces", "feet", "inches"
 ]);
+const NUMBER_TERMS = new Set([
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+  "nine", "ten", "first", "second", "third", "fourth", "fifth", "sixth",
+  "seventh", "eighth", "ninth", "tenth"
+]);
+const CAPITALIZED_NUMBER_TERMS = new Set(["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"]);
+const SINGLE_WORD_DETERMINERS = new Set(["single", "only", "same"]);
 const CLAUSE_SUBJECT_STARTS = new Set([
   "people", "teams", "projects", "captions", "subtitles", "files", "clips",
   "we", "our", "she", "he", "they", "it", "this", "that", "your", "maya",
@@ -61,9 +84,13 @@ const CLAUSE_SUBJECT_STARTS = new Set([
 const CLAUSE_VERBS = new Set([
   "was", "wasn't", "were", "weren't", "is", "isn't", "are", "aren't",
   "became", "came", "went", "gets", "used", "started", "added", "built",
-  "tried", "worked", "said",
+  "tried", "worked", "said", "told",
   "learned", "had", "would", "crack", "bleed", "make", "recognize",
   "presented", "reviewed", "approved", "adjusted", "organized"
+]);
+const IMPERATIVE_START_VERBS = new Set([
+  "try", "get", "look", "watch", "take", "use", "apply", "put", "stop", "start",
+  "tell", "remember", "imagine", "think", "listen", "see"
 ]);
 
 let mainWindow;
@@ -404,10 +431,10 @@ ipcMain.handle("gladia:transcribe", async (_event, payload) => {
   const result = await pollTranscription(apiKey, job.result_url || `${GLADIA_BASE_URL}/pre-recorded/${job.id}`, filePath);
 
   const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
-  const srtText = postProcessSrtText(
-    extractSrt(result, payload.subtitleDefaults, keepTogetherPhrases),
-    keepTogetherPhrases,
+  const srtText = extractSrt(
+    result,
     payload.subtitleDefaults,
+    keepTogetherPhrases,
     payload.spellingRules || []
   );
   if (!srtText) {
@@ -586,10 +613,15 @@ function upsertHistorySrt(filePath, srtText, outputPath = "") {
   writeSettings(settings);
 }
 
-function extractSrt(result, subtitleDefaults, keepTogetherPhrases) {
+function extractSrt(result, subtitleDefaults, keepTogetherPhrases, spellingRules = []) {
+  const sentences = extractGladiaSentences(result);
+  if (sentences.length > 0) {
+    return buildSrtFromSentences(sentences, subtitleDefaults, keepTogetherPhrases, spellingRules);
+  }
+
   const utterances = result.result?.transcription?.utterances || result.transcription?.utterances || [];
   if (Array.isArray(utterances) && utterances.length > 0) {
-    return buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrases);
+    return buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrases, spellingRules);
   }
 
   const candidates = [
@@ -603,21 +635,58 @@ function extractSrt(result, subtitleDefaults, keepTogetherPhrases) {
 
   for (const subtitles of candidates) {
     const srt = subtitles.find((item) => item.format === "srt");
-    if (srt?.subtitles) return srt.subtitles;
+    if (srt?.subtitles) {
+      return postProcessSrtText(srt.subtitles, keepTogetherPhrases, subtitleDefaults, spellingRules);
+    }
   }
 
   return "";
 }
 
-function buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrases) {
-  const settings = normalizeSubtitleSettings(subtitleDefaults);
-  const words = flattenWords(utterances);
-  const cues = words.length > 0
-    ? buildCuesFromWords(words, settings, keepTogetherPhrases)
-    : buildCuesFromUtteranceText(utterances, settings);
+function extractGladiaSentences(result) {
+  const candidates = [
+    result.result?.transcription?.sentences?.results,
+    result.result?.transcription?.sentences,
+    result.result?.sentences?.results,
+    result.result?.sentences,
+    result.transcription?.sentences?.results,
+    result.transcription?.sentences,
+    result.sentences?.results,
+    result.sentences
+  ];
 
-  const adjustedCues = applyCaptionGaps(enforceMinimumDuration(mergeSingleWordCues(cues), settings), settings);
-  return adjustedCues.map((cue, index) => {
+  return candidates.find((candidate) => Array.isArray(candidate) && candidate.length > 0) || [];
+}
+
+function buildSrtFromSentences(sentences, subtitleDefaults, keepTogetherPhrases, spellingRules = []) {
+  const settings = normalizeSubtitleSettings(subtitleDefaults);
+  const cues = sentences.flatMap((sentence) => {
+    const words = flattenSentenceWords(sentence, spellingRules);
+    const sentenceCues = words.length > 0
+      ? buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases)
+      : buildCuesFromSentenceText(sentence, settings, spellingRules);
+    return repairTimedCues(sentenceCues, settings, keepTogetherPhrases);
+  });
+
+  const dedupedCues = srtCueObjectsToTimedCues(removeDuplicateSingleWordCues(timedCuesToSrtCueObjects(cues)));
+  const adjustedCues = applyCaptionGaps(enforceMinimumDuration(dedupedCues, settings), settings);
+  return formatTimedCues(adjustedCues, settings);
+}
+
+function buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrases, spellingRules = []) {
+  const settings = normalizeSubtitleSettings(subtitleDefaults);
+  const words = flattenWords(utterances, spellingRules);
+  const cues = words.length > 0
+    ? buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases)
+    : buildCuesFromUtteranceText(utterances, settings, spellingRules);
+
+  const repairedCues = words.length > 0 ? repairTimedCues(cues, settings, keepTogetherPhrases) : cues;
+  const adjustedCues = applyCaptionGaps(enforceMinimumDuration(mergeSingleWordCues(repairedCues), settings), settings);
+  return formatTimedCues(adjustedCues, settings);
+}
+
+function formatTimedCues(cues, settings) {
+  return cues.map((cue, index) => {
     const lines = wrapSubtitleText(cue.text, settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
     return `${index + 1}\n${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}\n${lines}`;
   }).join("\n\n");
@@ -632,34 +701,148 @@ function normalizeSubtitleSettings(subtitleDefaults) {
     maximumDuration: Number(subtitleDefaults.maximum_duration || 2),
     captionGap: Number(subtitleDefaults.caption_gap || 0),
     splitOnSilenceGap: Number(subtitleDefaults.split_on_silence_gap || 0.35),
-    maximumCharactersPerCaption: maximumCharactersPerRow * maximumRowsPerCaption,
+    targetCharactersPerCaption: maximumCharactersPerRow * maximumRowsPerCaption,
     maximumCharactersPerRow,
     maximumRowsPerCaption
   };
 }
 
-function flattenWords(utterances) {
+function flattenSentenceWords(sentence, spellingRules = []) {
+  if (!Array.isArray(sentence?.words)) return [];
+  const sentenceStart = Number(sentence.start ?? 0);
+  const sentenceEnd = Number(sentence.end ?? sentenceStart);
+  return sentence.words.map((word) => ({
+    text: cleanWord(applyLocalSpellingRules(word.punctuated_word || word.word || word.text || "", spellingRules)),
+    start: Number(word.start ?? sentenceStart),
+    end: Number(word.end ?? word.start ?? sentenceEnd ?? sentenceStart)
+  })).filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end));
+}
+
+function flattenWords(utterances, spellingRules = []) {
   return utterances.flatMap((utterance) => {
     if (!Array.isArray(utterance.words)) return [];
     return utterance.words.map((word) => ({
-      text: cleanWord(word.punctuated_word || word.word || word.text || ""),
+      text: cleanWord(applyLocalSpellingRules(word.punctuated_word || word.word || word.text || "", spellingRules)),
       start: Number(word.start ?? utterance.start ?? 0),
       end: Number(word.end ?? utterance.end ?? word.start ?? utterance.start ?? 0)
     }));
   }).filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end));
 }
 
-function buildCuesFromWords(words, settings, keepTogetherPhrases) {
-  const cues = [];
-  let startIndex = 0;
+function buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases) {
+  const count = words.length;
+  const costs = Array(count + 1).fill(Number.POSITIVE_INFINITY);
+  const nextBreaks = Array(count + 1).fill(0);
+  costs[count] = 0;
 
-  while (startIndex < words.length) {
-    const endIndex = chooseNaturalCueEnd(words, startIndex, settings, keepTogetherPhrases);
-    cues.push(wordsToCue(words.slice(startIndex, endIndex + 1)));
-    startIndex = endIndex + 1;
+  for (let startIndex = count - 1; startIndex >= 0; startIndex -= 1) {
+    candidateCueEnds(words, startIndex, settings).forEach((endIndex) => {
+      const cost = scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPhrases) + costs[endIndex + 1];
+      if (cost < costs[startIndex]) {
+        costs[startIndex] = cost;
+        nextBreaks[startIndex] = endIndex + 1;
+      }
+    });
+  }
+
+  const cues = [];
+  for (let index = 0; index < count;) {
+    const nextIndex = nextBreaks[index] > index ? nextBreaks[index] : Math.min(count, index + 1);
+    cues.push(wordsToCue(words.slice(index, nextIndex)));
+    index = nextIndex;
   }
 
   return cues;
+}
+
+function repairTimedCues(cues, settings, keepTogetherPhrases) {
+  return srtCueObjectsToTimedCues(repairSrtCuesUntilStable(timedCuesToSrtCueObjects(cues), settings, keepTogetherPhrases));
+}
+
+function timedCuesToSrtCueObjects(cues) {
+  return cues.map((cue) => ({
+    timing: `${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}`,
+    text: cue.text
+  }));
+}
+
+function srtCueObjectsToTimedCues(cues) {
+  return cues.map((cue) => {
+    const [startText, endText] = cue.timing.split("-->").map((part) => part.trim());
+    return {
+      start: parseSrtTime(startText),
+      end: parseSrtTime(endText),
+      text: cue.text
+    };
+  }).filter((cue) => cue.text && Number.isFinite(cue.start) && Number.isFinite(cue.end));
+}
+
+function candidateCueEnds(words, startIndex, settings) {
+  const ends = [];
+  const hardDurationLimit = Math.max(settings.maximumDuration * 1.8, settings.targetDuration * 3, settings.minimumDuration + 0.5);
+  const maxWordsPerCue = Math.max(4, Math.ceil(settings.targetCharactersPerCaption / 3));
+  let lastVisualFitEnd = startIndex;
+
+  for (let endIndex = startIndex; endIndex < words.length; endIndex += 1) {
+    const duration = words[endIndex].end - words[startIndex].start;
+    const wordCount = endIndex - startIndex + 1;
+    const text = wordsToText(words.slice(startIndex, endIndex + 1));
+    const fitsVisualRow = settings.maximumRowsPerCaption !== 1 || text.length <= settings.maximumCharactersPerRow;
+    if (fitsVisualRow) lastVisualFitEnd = endIndex;
+    if (!fitsVisualRow && endIndex > startIndex) {
+      if (ends.length === 0) ends.push(lastVisualFitEnd);
+      break;
+    }
+    if (wordCount > maxWordsPerCue && duration > settings.targetDuration) break;
+    if (duration > hardDurationLimit && wordCount > 1) break;
+    ends.push(endIndex);
+    if (endsSentence(words[endIndex].text) && duration >= settings.minimumDuration) break;
+  }
+
+  return ends.length > 0 ? ends : [startIndex];
+}
+
+function scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPhrases) {
+  const cueWords = words.slice(startIndex, endIndex + 1);
+  const nextWords = words.slice(endIndex + 1, Math.min(words.length, endIndex + 8));
+  const cueTextWords = cueWords.map((word) => word.text);
+  const nextTextWords = nextWords.map((word) => word.text);
+  const text = wordsToText(cueWords);
+  const duration = words[endIndex].end - words[startIndex].start;
+  const endWord = normalizeToken(words[endIndex].text);
+  const nextWord = normalizeToken(words[endIndex + 1]?.text || "");
+  const nextRawWord = words[endIndex + 1]?.text || "";
+  let score = 0;
+
+  score += Math.abs(duration - settings.targetDuration) * 55;
+  if (duration < settings.minimumDuration) score += (settings.minimumDuration - duration) * 180;
+  if (duration > settings.maximumDuration) score += (duration - settings.maximumDuration) * 90;
+  score += characterTargetPenalty(text.length, settings) * 22;
+  if (settings.maximumRowsPerCaption === 1 && text.length > settings.maximumCharactersPerRow) {
+    score += 5000 + ((text.length - settings.maximumCharactersPerRow) * 120);
+  }
+
+  if (cueWords.length === 1) score += 450;
+  if (cueWords.length === 2 && endIndex + 1 < words.length) score += 120;
+  if (wouldBreakProtectedPhraseAt(words, endIndex, keepTogetherPhrases)) score += 1200;
+  if (isNumberLike(endWord) && UNIT_WORDS.has(nextWord)) score += 1200;
+  if (UNIT_WORDS.has(endWord) && isNumberTerm(nextWord)) score += 1200;
+  if (hasLowercaseContinuationBreak(cueTextWords, nextTextWords)) score += 900;
+  if (hasIncompleteVerbPhraseBeforeObject(cueTextWords, nextTextWords)) score += 1000;
+  if (hasIncompleteOpenerFragment(cueTextWords, nextTextWords)) score += 900;
+  if (hasSplitCapitalizedNounPhraseBeforePredicate(cueTextWords, nextTextWords)) score += 1000;
+
+  score += badEndCategoryPenalty(endWord);
+  score += badStartCategoryPenalty(nextWord);
+  if (WEAK_END_WORDS.has(endWord)) score += 80;
+  if (/[,:;]$/.test(words[endIndex].text)) score += 120;
+  if (endsSentence(text)) score -= 260;
+  if (/[!?]$/.test(words[endIndex].text)) score -= 80;
+  if (isLikelySentenceStart(words[endIndex + 1]) && duration >= settings.minimumDuration) score -= 190;
+  if (startsLowercase(nextRawWord) && !isLowercaseSentenceLikeStart(nextWord, normalizeToken(words[endIndex + 2]?.text || ""))) score += 220;
+  if (splitTextAtLikelySentenceStarts(text).length > 1) score += 600;
+
+  return score;
 }
 
 function chooseNaturalCueEnd(words, startIndex, settings, keepTogetherPhrases) {
@@ -671,13 +854,13 @@ function chooseNaturalCueEnd(words, startIndex, settings, keepTogetherPhrases) {
     const nextWord = words[index + 1];
     const silenceGap = nextWord ? nextWord.start - words[index].end : 0;
 
-    if (text.length > settings.maximumCharactersPerCaption && index > startIndex) {
-      return avoidBadFinalBreak(words, startIndex, index - 1, keepTogetherPhrases);
-    }
     hardEnd = index;
     if (endsSentence(text)) return index;
-    if (silenceGap > settings.splitOnSilenceGap) return avoidBadFinalBreak(words, startIndex, index, keepTogetherPhrases);
-    if (text.length > settings.maximumCharactersPerCaption || duration > settings.maximumDuration) break;
+    if (isLikelySentenceStart(nextWord) && duration >= settings.minimumDuration) {
+      return avoidBadFinalBreak(words, startIndex, index, keepTogetherPhrases);
+    }
+    if (shouldSplitOnSilence(silenceGap, duration, settings)) return avoidBadFinalBreak(words, startIndex, index, keepTogetherPhrases);
+    if (duration > settings.maximumDuration) break;
   }
 
   const minCandidateEnd = Math.min(words.length - 1, startIndex + 1);
@@ -685,6 +868,10 @@ function chooseNaturalCueEnd(words, startIndex, settings, keepTogetherPhrases) {
   const targetEnd = findTargetEnd(words, startIndex, candidateEnd, settings);
   const bestEnd = chooseBestBreak(words, startIndex, targetEnd, candidateEnd, settings, keepTogetherPhrases);
   return Math.max(minCandidateEnd, bestEnd);
+}
+
+function shouldSplitOnSilence(silenceGap, duration, settings) {
+  return silenceGap > settings.splitOnSilenceGap && duration >= settings.targetDuration;
 }
 
 function findTargetEnd(words, startIndex, candidateEnd, settings) {
@@ -725,16 +912,104 @@ function scoreBreak(words, startIndex, endIndex, targetEnd, settings, keepTogeth
   if (countWords(text) < 2) score += 500;
   if (endsSentence(text)) score -= 80;
   if (/[,:;]$/.test(words[endIndex].text)) score += 120;
-  if (BAD_END_WORDS.has(endWord)) score += 90;
-  if (BAD_START_WORDS.has(nextWord)) score += 160;
+  score += badEndCategoryPenalty(endWord);
+  score += badStartCategoryPenalty(nextWord);
   if (PAIR_START_WORDS.has(endWord)) score += 75;
   if (PAIR_END_WORDS.has(nextWord)) score += 60;
   if (isNumberLike(endWord) && nextWord) score += 70;
+  if (isNumberLike(endWord) && UNIT_WORDS.has(nextWord)) score += 1000;
   if (isNumberLike(previousWord) && UNIT_WORDS.has(endWord)) score -= 20;
+  if (isLikelySentenceStart(words[endIndex + 1]) && duration >= settings.minimumDuration) score -= 160;
   if (duration < settings.minimumDuration) score += 30;
-  if (text.length > settings.maximumCharactersPerCaption) score += 100;
+  score += characterTargetPenalty(text.length, settings) * 2;
 
   return score;
+}
+
+function badEndCategoryPenalty(token) {
+  if (!token) return 0;
+  if (isDeterminer(token)) return 260;
+  if (SUBJECT_PRONOUNS.has(token) && token !== "it") return 180;
+  if (isConjunction(token)) return 220;
+  if (isPreposition(token)) return 190;
+  if (isPhrasalVerbParticle(token)) return 170;
+  if (isAuxiliary(token)) return 130;
+  if (isSubordinatingConjunction(token)) return 130;
+  if (isAdverbLike(token)) return 100;
+  if (isProgressiveVerbLike(token)) return 90;
+  if (NEGATIONS.has(token) || DEGREE_MODIFIERS.has(token)) return 110;
+  return 0;
+}
+
+function badStartCategoryPenalty(token) {
+  if (!token) return 0;
+  if (isConjunction(token)) return 220;
+  if (isDeterminer(token)) return 190;
+  if (isPreposition(token)) return 200;
+  if (isPhrasalVerbParticle(token)) return 190;
+  if (isAuxiliary(token)) return 120;
+  if (isSubordinatingConjunction(token)) return 120;
+  if (SUBJECT_PRONOUNS.has(token) || OBJECT_PRONOUNS.has(token)) return 120;
+  return 0;
+}
+
+function characterTargetPenalty(length, settings) {
+  const target = settings.targetCharactersPerCaption;
+  if (!target) return 0;
+  return Math.abs(length - target) / target;
+}
+
+function isDeterminer(token) {
+  return ARTICLES.has(token) || QUANTIFIER_DETERMINERS.has(token) || POSSESSIVE_DETERMINERS.has(token) || DEMONSTRATIVE_DETERMINERS.has(token);
+}
+
+function isConjunction(token) {
+  return COORDINATING_CONJUNCTIONS.has(token);
+}
+
+function isSubordinatingConjunction(token) {
+  return SUBORDINATING_CONJUNCTIONS.has(token);
+}
+
+function isPreposition(token) {
+  return PREPOSITIONS.has(token);
+}
+
+function isPhrasalVerbParticle(token) {
+  return PHRASAL_VERB_PARTICLES.has(token);
+}
+
+function isAuxiliary(token) {
+  return AUXILIARY_VERBS.has(token);
+}
+
+function isAdverbLike(token) {
+  return /^[a-z]+ly$/.test(token);
+}
+
+function isProgressiveVerbLike(token) {
+  return /^[a-z]{4,}ing$/.test(token);
+}
+
+function isLikelySentenceStart(word) {
+  if (!word?.text || !startsUppercase(word.text)) return false;
+  const token = normalizeToken(word.text);
+  return SUBJECT_PRONOUNS.has(token)
+    || CAPITALIZED_NUMBER_TERMS.has(word.text)
+    || SENTENCE_START_CONTRACTIONS.has(token)
+    || QUESTION_SENTENCE_STARTS.has(token)
+    || DISCOURSE_SENTENCE_STARTS.has(token)
+    || TEMPORAL_SENTENCE_STARTS.has(token)
+    || isSubordinatingConjunction(token)
+    || NEGATIONS.has(token)
+    || isDeterminer(token)
+    || DEMONSTRATIVE_DETERMINERS.has(token)
+    || CLAUSE_SUBJECT_STARTS.has(token)
+    || IMPERATIVE_START_VERBS.has(token);
+}
+
+function containsLikelySentenceStartAfterFirst(words) {
+  return words.slice(1).some((word) => isLikelySentenceStart({ text: word }));
 }
 
 function avoidBadFinalBreak(words, startIndex, endIndex, keepTogetherPhrases) {
@@ -751,8 +1026,8 @@ function avoidBadFinalBreak(words, startIndex, endIndex, keepTogetherPhrases) {
 function isBadBreak(words, endIndex, keepTogetherPhrases) {
   const endWord = normalizeToken(words[endIndex]?.text || "");
   const nextWord = normalizeToken(words[endIndex + 1]?.text || "");
-  return BAD_END_WORDS.has(endWord)
-    || BAD_START_WORDS.has(nextWord)
+  return badEndCategoryPenalty(endWord) >= 180
+    || badStartCategoryPenalty(nextWord) >= 180
     || /[,:;]$/.test(words[endIndex]?.text || "")
     || wouldBreakProtectedPhraseAt(words, endIndex, keepTogetherPhrases);
 }
@@ -769,11 +1044,22 @@ function wordsToText(words) {
   return words.map((word) => word.text).join(" ").trim();
 }
 
-function buildCuesFromUtteranceText(utterances, settings) {
+function buildCuesFromSentenceText(sentence, settings, spellingRules = []) {
+  const start = Number(sentence.start || 0);
+  const end = Number(sentence.end || start);
+  const text = applyLocalSpellingRules(sentence.sentence || sentence.text || sentence.transcript || "", spellingRules);
+  return [{
+    start,
+    end: Math.min(end, start + settings.maximumDuration),
+    text: cleanWord(text)
+  }].filter((cue) => cue.text);
+}
+
+function buildCuesFromUtteranceText(utterances, settings, spellingRules = []) {
   return utterances.map((utterance) => ({
     start: Number(utterance.start || 0),
     end: Math.min(Number(utterance.end || 0), Number(utterance.start || 0) + settings.maximumDuration),
-    text: cleanWord(utterance.text || "")
+    text: cleanWord(applyLocalSpellingRules(utterance.text || "", spellingRules))
   })).filter((cue) => cue.text);
 }
 
@@ -878,13 +1164,14 @@ function postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spel
     }))
     .filter((cue) => cue.text);
 
-  const smoothedCues = smoothAwkwardSrtBreaks(mergeSingleWordSrtCues(cleanedCues), settings, keepTogetherPhrases).map((cue) => ({
+  const commaAdjustedCues = moveLeadingCommaWordsToPreviousCue(cleanedCues, findLeadingCommaWordIssues(cleanedCues));
+  const smoothedCues = smoothAwkwardSrtBreaks(mergeSingleWordSrtCues(commaAdjustedCues), settings, keepTogetherPhrases).map((cue) => ({
     ...cue,
     text: cleanSubtitleText(applyLocalSpellingRules(cue.text, spellingRules))
         .replace(/[.!?,]+$/g, "")
         .trim()
   })).filter((cue) => cue.text);
-  return splitLongSrtCues(smoothedCues, settings, keepTogetherPhrases);
+  return repairSrtCuesUntilStable(smoothedCues, settings, keepTogetherPhrases);
 }
 
 function applyLocalSpellingRules(text, spellingRules) {
@@ -915,48 +1202,543 @@ function applyCaptionGapsToSrtCues(cues, settings) {
   });
 }
 
-function splitLongSrtCues(cues, settings, keepTogetherPhrases) {
-  return cues.flatMap((cue) => {
-    const text = cleanSubtitleText(cue.text);
-    if (text.length <= settings.maximumCharactersPerCaption) return [{ ...cue, text }];
+function repairSrtCuesUntilStable(cues, settings, keepTogetherPhrases) {
+  let repaired = normalizeSrtCueText(cues);
 
-    const pieces = splitTextToCaptionBudget(text, settings, keepTogetherPhrases);
-    if (pieces.length <= 1) return [{ ...cue, text }];
+  for (let pass = 0; pass < MAX_SRT_REPAIR_PASSES; pass += 1) {
+    const issues = findSubtitleIssues(repaired, settings, keepTogetherPhrases);
+    if (issues.length === 0) return splitLongSrtCues(repaired, settings, keepTogetherPhrases);
 
-    return splitTimingAcrossPieces(cue.timing, pieces).map((piece) => ({
-      timing: piece.timing,
-      text: piece.text
-    }));
+    const next = repairSubtitleIssues(repaired, issues, settings, keepTogetherPhrases);
+    if (srtCueSignature(next) === srtCueSignature(repaired)) return splitLongSrtCues(repaired, settings, keepTogetherPhrases);
+    repaired = next;
+  }
+
+  return splitLongSrtCues(repaired, settings, keepTogetherPhrases);
+}
+
+function normalizeSrtCueText(cues) {
+  return cues.map((cue) => ({
+    ...cue,
+    text: cleanSubtitleText(cue.text)
+      .replace(/[.!?,]+$/g, "")
+      .trim()
+  })).filter((cue) => cue.text);
+}
+
+function findSubtitleIssues(cues, settings, keepTogetherPhrases) {
+  return cues.flatMap((cue, index) => {
+    const issues = [];
+    const words = tokenList(cue.text);
+    const endWord = normalizeToken(words[words.length - 1] || "");
+    const startWord = normalizeToken(words[0] || "");
+    const nextCue = cues[index + 1];
+    const nextWords = tokenList(nextCue?.text || "");
+    const nextStart = normalizeToken(nextWords[0] || "");
+    const canMergeNext = canMergeCueWithNext(cue, nextCue, settings);
+
+    if (splitTextAtLikelySentenceStarts(cue.text).length > 1) {
+      issues.push({ type: "missing-sentence-split", index });
+    }
+    if (index > 0 && startsWithCommaWord(cue.text)) {
+      issues.push({ type: "leading-comma-word", index });
+    }
+    if (index > 0 && hasLeadingDanglingWordsBeforeSentenceStart(words)) {
+      issues.push({ type: "leading-dangling-before-sentence", index });
+    }
+	    if (index < cues.length - 1 && canMergeNext && isBadShortMidCue(cue.text)) {
+	      issues.push({ type: "short-mid-cue", index });
+	    }
+	    if (isDuplicateSingleWordCue(cue, cues[index - 1], nextCue)) {
+	      issues.push({ type: "duplicate-single-word-cue", index });
+	    }
+	    if (index < cues.length - 1 && shouldRebalanceSrtPair(cue, nextCue)) {
+	      issues.push({ type: "awkward-pair-split", index });
+	    }
+	    if (index < cues.length - 1 && canMergeNext && isQaBadEnd(endWord)) {
+	      issues.push({ type: "bad-end-category", index });
+	    }
+    if (index < cues.length - 1 && canMergeNext && hasIncompleteVerbPhraseBeforeObject(words, nextWords)) {
+      issues.push({ type: "incomplete-verb-phrase", index });
+    }
+    if (index < cues.length - 1 && canMergeNext && hasIncompleteOpenerFragment(words, nextWords)) {
+      issues.push({ type: "incomplete-opener-fragment", index });
+    }
+    if (index < cues.length - 1 && canMergeNext && hasSplitTimeOrMeasurementPhrase(words, nextWords)) {
+      issues.push({ type: "split-time-measurement", index });
+    }
+    if (index < cues.length - 1 && canMergeNext && hasSplitCapitalizedNounPhraseBeforePredicate(words, nextWords)) {
+      issues.push({ type: "split-capitalized-noun-phrase", index });
+    }
+    if (index < cues.length - 1 && canMergeNext && hasLowercaseContinuationBreak(words, nextWords)) {
+      issues.push({ type: "lowercase-continuation", index });
+    }
+    if (index > 0 && hasBadCueStart(words)) {
+      issues.push({ type: "bad-start-category", index });
+    }
+    if (index < cues.length - 1 && isNumberLike(endWord) && UNIT_WORDS.has(nextStart)) {
+      issues.push({ type: "number-unit-split", index });
+    }
+    if (index < cues.length - 1 && endsWithProtectedPhraseStart(cue.text, nextCue?.text || "", keepTogetherPhrases)) {
+      issues.push({ type: "protected-phrase-split", index });
+    }
+    if (settings.maximumRowsPerCaption === 1 && String(cue.text).includes("\n")) {
+      issues.push({ type: "row-count", index });
+    }
+
+    return issues;
   });
 }
 
-function splitTextToCaptionBudget(text, settings, keepTogetherPhrases) {
+function canMergeCueWithNext(cue, nextCue, settings) {
+  if (!nextCue) return false;
+  if (settings.maximumRowsPerCaption !== 1) return true;
+  return cleanSubtitleText(`${cue.text} ${nextCue.text}`).length <= settings.maximumCharactersPerRow;
+}
+
+function findLeadingCommaWordIssues(cues) {
+  return cues.flatMap((cue, index) => (
+    index > 0 && startsWithCommaWord(cue.text)
+      ? [{ type: "leading-comma-word", index }]
+      : []
+  ));
+}
+
+function hasLeadingDanglingWordsBeforeSentenceStart(words) {
+  if (words.length < 3) return false;
+  return [1, 2].some((index) => index < words.length - 1 && shouldStartNewSentencePiece(words, index));
+}
+
+function startsWithCommaWord(text) {
+  const firstWord = tokenList(text)[0] || "";
+  return /^[A-Za-z0-9]+,$/.test(firstWord);
+}
+
+function isBadShortMidCue(text) {
   const words = tokenList(text);
-  if (words.length <= 1) return [text];
+  if (words.length === 0 || words.length > 2) return false;
+  const first = normalizeToken(words[0]);
+  const last = normalizeToken(words[words.length - 1]);
+  if (isQaBadStart(first) || isQaBadEnd(last)) return true;
+  if (TEMPORAL_SENTENCE_STARTS.has(first)) return true;
+  if (WEAK_END_WORDS.has(last)) return true;
+  if (isPhrasalVerbParticle(first)) return true;
+  return false;
+}
+
+function isDuplicateSingleWordCue(cue, previousCue, nextCue) {
+  const words = tokenList(cue?.text || "");
+  if (words.length !== 1) return false;
+  const word = normalizeToken(words[0]);
+  const previousWords = tokenList(previousCue?.text || "");
+  const nextWords = tokenList(nextCue?.text || "");
+  return normalizeToken(previousWords[previousWords.length - 1] || "") === word
+    || normalizeToken(nextWords[0] || "") === word;
+}
+
+function hasIncompleteVerbPhraseBeforeObject(words, nextWords) {
+  if (words.length < 2 || nextWords.length === 0) return false;
+  const last = normalizeToken(words[words.length - 1]);
+  const previous = normalizeToken(words[words.length - 2]);
+  const nextStart = normalizeToken(nextWords[0]);
+  if (!COMPLEMENT_TAKING_VERBS.has(last)) return false;
+  if (!isAuxiliary(previous) && previous !== "to") return false;
+  return SUBJECT_PRONOUNS.has(nextStart) || OBJECT_PRONOUNS.has(nextStart) || isDeterminer(nextStart);
+}
+
+function hasIncompleteOpenerFragment(words, nextWords) {
+  if (words.length === 0 || words.length > 4 || nextWords.length === 0) return false;
+  const first = normalizeToken(words[0]);
+  const nextStart = normalizeToken(nextWords[0]);
+  if (isTemporalOpenerFragment(words, nextWords)) return true;
+  if (!startsLowercase(nextWords[0] || "")) return false;
+  if (DISCOURSE_SENTENCE_STARTS.has(first)) return true;
+  if (DEMONSTRATIVE_DETERMINERS.has(first) && words.some((word) => NEGATIONS.has(normalizeToken(word)))) return true;
+  if (isDeterminer(first) && words.length <= 3) return true;
+  if (isPreposition(first) && (UNIT_WORDS.has(nextStart) || NUMBER_TERMS.has(nextStart))) return true;
+  return false;
+}
+
+function isTemporalOpenerFragment(words, nextWords) {
+  if (words.length < 2 || words.length > 4 || nextWords.length === 0) return false;
+  const first = normalizeToken(words[0]);
+  const last = normalizeToken(words[words.length - 1]);
+  const nextStart = normalizeToken(nextWords[0]);
+  return isDeterminer(first) && TEMPORAL_NOUNS.has(last) && SUBJECT_PRONOUNS.has(nextStart);
+}
+
+function hasSplitTimeOrMeasurementPhrase(words, nextWords) {
+  if (words.length < 2 || nextWords.length === 0) return false;
+  const previous = normalizeToken(words[words.length - 2]);
+  const last = normalizeToken(words[words.length - 1]);
+  const nextStart = normalizeToken(nextWords[0]);
+  if (!UNIT_WORDS.has(last)) return false;
+  return isPreposition(previous) && isNumberTerm(nextStart);
+}
+
+function hasSplitCapitalizedNounPhraseBeforePredicate(words, nextWords) {
+  if (words.length === 0 || nextWords.length < 2) return false;
+  const lastWord = words[words.length - 1];
+  return startsUppercase(lastWord)
+    && startsLowercase(nextWords[0])
+    && (isAuxiliary(normalizeToken(nextWords[1])) || isVerbLike(normalizeToken(nextWords[0])));
+}
+
+function hasLowercaseContinuationBreak(words, nextWords) {
+  if (words.length === 0 || nextWords.length === 0) return false;
+  if (!startsLowercase(nextWords[0])) return false;
+  const nextStart = normalizeToken(nextWords[0]);
+  const nextSecond = normalizeToken(nextWords[1] || "");
+  if (isLowercaseSentenceLikeStart(nextStart, nextSecond)) return false;
+  if (isConjunction(nextStart)) return false;
+  if (isSplitSubjectPredicate(words, nextWords)) return true;
+  if (hasWeakVerbObjectSplit(words, nextWords)) return true;
+  if (hasNumberPluralSplit(words, nextWords)) return true;
+  return isUnfinishedModifierPhrase(words) || isShortUnfinishedNounPhrase(words, nextWords);
+}
+
+function isUnfinishedModifierPhrase(words) {
+  const last = normalizeToken(words[words.length - 1] || "");
+  if (!last) return false;
+  if (/^[a-z]+-[a-z]+$/.test(last)) return true;
+  if (/(ful|less|ous|ive|ic|al|ary|ory|ent|ant)$/.test(last)) return true;
+  return false;
+}
+
+function isShortUnfinishedNounPhrase(words, nextWords) {
+  const first = normalizeToken(words[0] || "");
+  const last = normalizeToken(words[words.length - 1] || "");
+  const nextStart = normalizeToken(nextWords[0] || "");
+  if (hasNumberPluralSplit(words, nextWords)) return true;
+  if (words.length > 4) return false;
+  if (isDeterminer(first) || POSSESSIVE_DETERMINERS.has(first)) return true;
+  if (isPreposition(words.length >= 2 ? normalizeToken(words[words.length - 2]) : "") && !isLowercaseSentenceLikeStart(nextStart, normalizeToken(nextWords[1] || ""))) return true;
+  if (SINGLE_WORD_DETERMINERS.has(last)) return true;
+  if (words.some((word) => /^[a-z]+-[a-z]+$/i.test(word)) && words.length <= 5) return true;
+  return false;
+}
+
+function hasNumberPluralSplit(words, nextWords) {
+  const last = normalizeToken(words[words.length - 1] || "");
+  const nextStart = normalizeToken(nextWords[0] || "");
+  return NUMBER_TERMS.has(last) && nextStart.endsWith("s");
+}
+
+function hasWeakVerbObjectSplit(words, nextWords) {
+  if (words.length === 0 || nextWords.length === 0) return false;
+  const last = normalizeToken(words[words.length - 1]);
+  const nextStart = normalizeToken(nextWords[0]);
+  return WEAK_END_WORDS.has(last)
+    && !isLowercaseSentenceLikeStart(nextStart, normalizeToken(nextWords[1] || ""))
+    && !isQaBadStart(nextStart);
+}
+
+function isSplitSubjectPredicate(words, nextWords) {
+  if (words.length === 0 || nextWords.length === 0) return false;
+  const last = normalizeToken(words[words.length - 1]);
+  const previous = normalizeToken(words[words.length - 2] || "");
+  const nextStart = normalizeToken(nextWords[0]);
+  if (!isAuxiliary(nextStart) && !isVerbLike(nextStart)) return false;
+  if (SUBJECT_PRONOUNS.has(last) || POSSESSIVE_DETERMINERS.has(previous) || isDeterminer(previous)) return true;
+  return words.length <= 6 && !isQaBadEnd(last);
+}
+
+function isNumberTerm(token) {
+  return isNumberLike(token) || NUMBER_TERMS.has(token);
+}
+
+function isVerbLike(token) {
+  return CLAUSE_VERBS.has(token) || /^[a-z]{3,}(s|ed|ing)$/.test(token);
+}
+
+function isQaBadEnd(token) {
+  if (!token) return false;
+  if (isDeterminer(token) || isConjunction(token) || isAuxiliary(token) || isSubordinatingConjunction(token)) return true;
+  if (isPreposition(token) && !isPhrasalVerbParticle(token)) return true;
+  if (QUESTION_SENTENCE_STARTS.has(token) || INCOMPLETE_END_CONTRACTIONS.has(token)) return true;
+  if (SUBJECT_PRONOUNS.has(token) && token !== "it") return true;
+  if (NEGATIONS.has(token) || DEGREE_MODIFIERS.has(token)) return true;
+  return false;
+}
+
+function isQaBadStart(token) {
+  if (!token) return false;
+  if (isConjunction(token) || isDeterminer(token) || isPhrasalVerbParticle(token)) return true;
+  if (token === "of" || token === "to" || token === "at" || token === "by" || token === "with") return true;
+  return false;
+}
+
+function hasBadCueStart(words) {
+  const firstWord = words[0] || "";
+  if (!startsLowercase(firstWord)) return false;
+  const first = normalizeToken(firstWord);
+  const second = normalizeToken(words[1] || "");
+  if (isLowercaseSentenceLikeStart(first, second)) return false;
+  return isQaBadStart(first);
+}
+
+function isLowercaseSentenceLikeStart(first, second) {
+  if (!first || !second) return false;
+  if ((SUBJECT_PRONOUNS.has(first) || DEMONSTRATIVE_DETERMINERS.has(first) || QUESTION_SENTENCE_STARTS.has(first) || CLAUSE_SUBJECT_STARTS.has(first)) && (isAuxiliary(second) || CLAUSE_VERBS.has(second))) {
+    return true;
+  }
+  if ((first === "by" || TEMPORAL_SENTENCE_STARTS.has(first)) && UNIT_WORDS.has(second)) {
+    return true;
+  }
+  if (first === "through" && isDeterminer(second)) {
+    return true;
+  }
+  return false;
+}
+
+function repairSubtitleIssues(cues, issues, settings, keepTogetherPhrases) {
+  let repaired = normalizeSrtCueText(cues);
+  const issueTypes = new Set(issues.map((issue) => issue.type));
+
+  if (issueTypes.has("missing-sentence-split")) {
+    repaired = splitCuesAtLikelySentenceStarts(repaired);
+  }
+
+	  if (issueTypes.has("leading-comma-word")) {
+	    repaired = moveLeadingCommaWordsToPreviousCue(repaired, issues);
+	  }
+
+	  if (issueTypes.has("duplicate-single-word-cue")) {
+	    repaired = removeDuplicateSingleWordCues(repaired);
+	  }
+	
+	  if (
+	    issueTypes.has("short-mid-cue")
+	    || issueTypes.has("bad-end-category")
+    || issueTypes.has("bad-start-category")
+    || issueTypes.has("number-unit-split")
+    || issueTypes.has("protected-phrase-split")
+    || issueTypes.has("leading-dangling-before-sentence")
+    || issueTypes.has("incomplete-verb-phrase")
+    || issueTypes.has("incomplete-opener-fragment")
+	    || issueTypes.has("split-time-measurement")
+	    || issueTypes.has("split-capitalized-noun-phrase")
+	    || issueTypes.has("lowercase-continuation")
+	    || issueTypes.has("awkward-pair-split")
+	  ) {
+	    repaired = mergeIssueCues(repaired, issues);
+	    repaired = mergeProtectedPhraseSrtCues(mergeSingleWordSrtCues(repaired), keepTogetherPhrases);
+	    repaired = smoothAwkwardSrtBreaks(repaired, settings, keepTogetherPhrases);
+    repaired = splitCuesAtLikelySentenceStarts(repaired);
+  }
+
+	  return splitLongSrtCues(normalizeSrtCueText(repaired), settings, keepTogetherPhrases);
+	}
+
+function removeDuplicateSingleWordCues(cues) {
+  return cues.filter((cue, index) => {
+    const words = tokenList(cue.text);
+    if (words.length !== 1) return true;
+    const word = normalizeToken(words[0]);
+    const previousWords = tokenList(cues[index - 1]?.text || "");
+    const nextWords = tokenList(cues[index + 1]?.text || "");
+    return normalizeToken(previousWords[previousWords.length - 1] || "") !== word
+      && normalizeToken(nextWords[0] || "") !== word;
+  });
+}
+
+function mergeIssueCues(cues, issues) {
+  const mergeWithNext = new Set();
+  issues.forEach((issue) => {
+    if (["short-mid-cue", "bad-end-category", "number-unit-split", "protected-phrase-split", "incomplete-verb-phrase", "incomplete-opener-fragment", "split-time-measurement", "split-capitalized-noun-phrase", "lowercase-continuation"].includes(issue.type)) {
+      mergeWithNext.add(issue.index);
+    }
+    if (issue.type === "bad-start-category" && issue.index > 0) {
+      mergeWithNext.add(issue.index - 1);
+    }
+    if (issue.type === "leading-dangling-before-sentence" && issue.index > 0) {
+      mergeWithNext.add(issue.index - 1);
+    }
+  });
+
+  const merged = [];
+  for (let index = 0; index < cues.length; index += 1) {
+    const cue = { ...cues[index] };
+    while (mergeWithNext.has(index) && index + 1 < cues.length) {
+      const nextCue = cues[index + 1];
+      cue.text = `${cue.text} ${nextCue.text}`.trim();
+      cue.timing = `${cue.timing.split("-->")[0].trim()} --> ${nextCue.timing.split("-->")[1].trim()}`;
+      index += 1;
+    }
+    merged.push(cue);
+  }
+  return merged;
+}
+
+function moveLeadingCommaWordsToPreviousCue(cues, issues) {
+  const indexes = new Set(issues
+    .filter((issue) => issue.type === "leading-comma-word" && issue.index > 0)
+    .map((issue) => issue.index));
+  if (indexes.size === 0) return cues;
+
+  const updated = cues.map((cue) => ({ ...cue }));
+  indexes.forEach((index) => {
+    const cue = updated[index];
+    const previous = updated[index - 1];
+    if (!cue || !previous) return;
+
+    const words = tokenList(cue.text);
+    if (words.length < 2 || !/^[A-Za-z0-9]+,$/.test(words[0])) return;
+
+    const movedWord = words[0].replace(/,$/, "");
+    const remainingText = words.slice(1).join(" ");
+    const previousText = `${previous.text} ${movedWord}`.trim();
+    const timing = splitCombinedTiming(previous.timing, cue.timing, previousText, remainingText);
+    previous.text = previousText;
+    previous.timing = timing.current;
+    cue.text = remainingText;
+    cue.timing = timing.next;
+  });
+
+  return updated.filter((cue) => cue.text);
+}
+
+function srtCueSignature(cues) {
+  return cues.map((cue) => `${cue.timing}\n${cue.text}`).join("\n\n");
+}
+
+function splitCuesAtLikelySentenceStarts(cues) {
+  return cues.flatMap((cue) => {
+    const pieces = splitTextAtLikelySentenceStarts(cue.text);
+    if (pieces.length <= 1) return [cue];
+    return splitTimingAcrossPieces(cue.timing, pieces);
+  });
+}
+
+function splitTextAtLikelySentenceStarts(text) {
+  const words = tokenList(text);
+  if (words.length < 4) return [cleanSubtitleText(text)];
 
   const pieces = [];
-  let startIndex = 0;
-  while (startIndex < words.length) {
-    const endIndex = chooseCaptionBudgetEnd(words, startIndex, settings, keepTogetherPhrases);
-    pieces.push(words.slice(startIndex, endIndex + 1).join(" "));
-    startIndex = endIndex + 1;
-  }
+  let current = [];
+  words.forEach((word, index) => {
+    if (index > 0 && current.length >= 2 && shouldStartNewSentencePiece(words, index)) {
+      pieces.push(current.join(" "));
+      current = [];
+    }
+    current.push(word);
+  });
+  if (current.length > 0) pieces.push(current.join(" "));
   return pieces;
 }
 
-function chooseCaptionBudgetEnd(words, startIndex, settings, keepTogetherPhrases) {
-  let endIndex = startIndex;
-  for (let index = startIndex; index < words.length; index += 1) {
-    const text = words.slice(startIndex, index + 1).join(" ");
-    if (text.length > settings.maximumCharactersPerCaption && index > startIndex) break;
-    if (text.length <= settings.maximumCharactersPerCaption) endIndex = index;
+function shouldStartNewSentencePiece(words, index) {
+  const word = words[index];
+  const token = normalizeToken(word);
+  const previousToken = normalizeToken(words[index - 1]);
+  const nextToken = normalizeToken(words[index + 1] || "");
+  const isCapitalizedSubjectStart = isCapitalizedSubjectBeforePredicate(word, previousToken, nextToken);
+  const isCapitalizedNounStart = isCapitalizedNounPhraseBeforePredicate(words, index, previousToken);
+  if (
+    !isLikelySentenceStart({ text: word })
+    && !isCapitalizedSubjectStart
+    && !isCapitalizedNounStart
+  ) return false;
+  if (POSSESSIVE_DETERMINERS.has(previousToken)) return false;
+  if ((isConjunction(previousToken) || isSubordinatingConjunction(previousToken) || isPreposition(previousToken)) && !isPhrasalVerbParticle(previousToken)) return false;
+  if (token === "i" && !startsUppercase(word)) return false;
+  if (token === "i" && (RELATIVE_CLAUSE_ANTECEDENTS.has(previousToken) || TEMPORAL_NOUNS.has(previousToken))) return false;
+  if (token === "i") return true;
+  if (SENTENCE_START_CONTRACTIONS.has(token) || QUESTION_SENTENCE_STARTS.has(token) || DISCOURSE_SENTENCE_STARTS.has(token)) return true;
+  if (isCapitalizedSubjectStart || isCapitalizedNounStart) return true;
+  if (TEMPORAL_SENTENCE_STARTS.has(token) || NEGATIONS.has(token)) return true;
+  if (isSubordinatingConjunction(token)) return true;
+  if (IMPERATIVE_START_VERBS.has(token)) return true;
+  if (isDeterminer(token)) return Boolean(nextToken);
+  return isAuxiliary(nextToken) || CLAUSE_VERBS.has(nextToken) || index + 1 >= words.length;
+}
+
+function isCapitalizedSubjectBeforePredicate(word, previousToken, nextToken) {
+  if (!startsUppercase(word)) return false;
+  if (!nextToken || previousToken === "dr") return false;
+  return isAuxiliary(nextToken) || CLAUSE_VERBS.has(nextToken) || /^[a-z]{3,}(s|ed)$/.test(nextToken);
+}
+
+function isCapitalizedNounPhraseBeforePredicate(words, index, previousToken) {
+  if (!startsUppercase(words[index])) return false;
+  if (isPreposition(previousToken) || previousToken === "dr") return false;
+  const nextToken = normalizeToken(words[index + 1] || "");
+  const followingToken = normalizeToken(words[index + 2] || "");
+  return Boolean(nextToken && followingToken && startsLowercase(words[index + 1]) && isAuxiliary(followingToken));
+}
+
+function splitLongSrtCues(cues, settings, keepTogetherPhrases) {
+  return cues.flatMap((cue) => {
+    const text = cleanSubtitleText(cue.text);
+    const sentencePieces = splitTextAtLikelySentenceStarts(text);
+    if (sentencePieces.length > 1) {
+      return splitLongSrtCues(splitTimingAcrossPieces(cue.timing, sentencePieces), settings, keepTogetherPhrases);
+    }
+    if (settings.maximumRowsPerCaption !== 1 || text.length <= settings.maximumCharactersPerRow) {
+      return [{ ...cue, text }];
+    }
+
+    const pieces = splitTextToVisualRows(text, settings, keepTogetherPhrases);
+    if (pieces.length <= 1) return [{ ...cue, text }];
+    return splitTimingAcrossPieces(cue.timing, pieces);
+  });
+}
+
+function splitTextToVisualRows(text, settings, keepTogetherPhrases) {
+  const words = tokenList(text);
+  const pieces = [];
+  let startIndex = 0;
+
+  while (startIndex < words.length) {
+    const endIndex = chooseVisualRowEnd(words, startIndex, settings, keepTogetherPhrases);
+    pieces.push(words.slice(startIndex, endIndex + 1).join(" "));
+    startIndex = endIndex + 1;
   }
 
-  let safeEnd = Math.max(startIndex, endIndex);
-  while (safeEnd > startIndex && wouldBreakProtectedPhraseAt(words.map((text) => ({ text })), safeEnd, keepTogetherPhrases)) {
-    safeEnd -= 1;
+  return pieces;
+}
+
+function chooseVisualRowEnd(words, startIndex, settings, keepTogetherPhrases) {
+  let lastFitEnd = startIndex;
+  for (let index = startIndex; index < words.length; index += 1) {
+    const text = words.slice(startIndex, index + 1).join(" ");
+    if (text.length > settings.maximumCharactersPerRow && index > startIndex) break;
+    lastFitEnd = index;
   }
-  return safeEnd;
+
+  let bestEnd = lastFitEnd;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let index = startIndex; index <= lastFitEnd; index += 1) {
+    const score = scoreVisualRowBreak(words, startIndex, index, lastFitEnd, settings, keepTogetherPhrases);
+    if (score < bestScore) {
+      bestScore = score;
+      bestEnd = index;
+    }
+  }
+  return Math.max(startIndex, bestEnd);
+}
+
+function scoreVisualRowBreak(words, startIndex, endIndex, preferredEnd, settings, keepTogetherPhrases) {
+  const endWord = normalizeToken(words[endIndex] || "");
+  const nextWord = normalizeToken(words[endIndex + 1] || "");
+  const leftWords = words.slice(startIndex, endIndex + 1);
+  const rightWords = words.slice(endIndex + 1);
+  const text = words.slice(startIndex, endIndex + 1).join(" ");
+  let score = Math.abs(preferredEnd - endIndex) * 12;
+  score += characterTargetPenalty(text.length, settings) * 20;
+  score += badEndCategoryPenalty(endWord);
+  if (!isLowercaseSentenceLikeStart(nextWord, normalizeToken(words[endIndex + 2] || ""))) {
+    score += badStartCategoryPenalty(nextWord);
+  }
+  if (isProgressiveVerbLike(endWord) && !isLowercaseSentenceLikeStart(nextWord, normalizeToken(words[endIndex + 2] || ""))) score += 500;
+  if (isNumberTerm(endWord) && UNIT_WORDS.has(nextWord)) score += 1000;
+  if (UNIT_WORDS.has(endWord) && isNumberTerm(nextWord)) score += 1000;
+  if (hasSplitCapitalizedNounPhraseBeforePredicate(leftWords, rightWords)) score += 1200;
+  if (containsLikelySentenceStartAfterFirst(leftWords)) score += 900;
+  if (wouldBreakProtectedPhraseAt(words.map((word) => ({ text: word })), endIndex, keepTogetherPhrases)) score += 1000;
+  if (endIndex === startIndex && words.length > 1) score += 500;
+  if (rightWords.length === 1) score += 3000;
+  return score;
 }
 
 function formatSrtCues(cues, settings = normalizeSubtitleSettings(defaultSettings.subtitleDefaults)) {
@@ -985,16 +1767,31 @@ function smoothAwkwardSrtBreaks(cues, settings, keepTogetherPhrases) {
 function shouldRebalanceSrtPair(current, next) {
   const currentWords = tokenList(current.text);
   const nextWords = tokenList(next.text);
-  if (currentWords.length < 2 || nextWords.length < 2) return false;
+  if (currentWords.length < 2 || nextWords.length < 1) return false;
+  if (isStrongSentenceBoundary(currentWords, nextWords)) return false;
 
   const endWord = normalizeToken(currentWords[currentWords.length - 1]);
   const startWord = normalizeToken(nextWords[0]);
-  return (currentWords.length <= 2 && !startsUppercase(nextWords[0]))
-    || BAD_END_WORDS.has(endWord)
+  return (nextWords.length === 1 && !startsUppercase(nextWords[0]))
+    || (currentWords.length <= 2 && !startsUppercase(nextWords[0]))
+    || badEndCategoryPenalty(endWord) >= 120
     || WEAK_END_WORDS.has(endWord)
-    || (BAD_START_WORDS.has(startWord) && startsLowercase(nextWords[0]))
-    || (WEAK_START_WORDS.has(startWord) && /^[a-z]/.test(nextWords[0]))
-    || /[,:;]$/.test(currentWords[currentWords.length - 1]);
+    || (badStartCategoryPenalty(startWord) >= 120 && startsLowercase(nextWords[0]) && !isLowercaseSentenceLikeStart(startWord, normalizeToken(nextWords[1] || "")))
+	    || /[,:;]$/.test(currentWords[currentWords.length - 1]);
+	}
+
+function isStrongSentenceBoundary(currentWords, nextWords) {
+  if (nextWords.length < 2) return false;
+  const first = nextWords[0];
+  const firstToken = normalizeToken(first);
+  const secondToken = normalizeToken(nextWords[1] || "");
+  const thirdToken = normalizeToken(nextWords[2] || "");
+  if (!startsUppercase(first)) return false;
+  if (firstToken === "i") return true;
+  if (SENTENCE_START_CONTRACTIONS.has(firstToken) || IMPERATIVE_START_VERBS.has(firstToken)) return true;
+  return isAuxiliary(secondToken)
+    || CLAUSE_VERBS.has(secondToken)
+    || (startsLowercase(nextWords[1]) && (isAuxiliary(thirdToken) || CLAUSE_VERBS.has(thirdToken)));
 }
 
 function rebalanceSrtPair(current, next, settings, keepTogetherPhrases) {
@@ -1030,10 +1827,12 @@ function chooseShortCaptionSplit(words, originalSplit, settings, keepTogetherPhr
     const leftText = words.slice(0, split).join(" ");
     const leftEnd = normalizeToken(words[split - 1]);
     const rightStart = normalizeToken(words[split]);
-    if (leftText.length > settings.maximumCharactersPerCaption) return 0;
     if (startsUppercase(words[split])) continue;
-    if (BAD_END_WORDS.has(leftEnd)) continue;
-    if (BAD_START_WORDS.has(rightStart) && startsLowercase(words[split])) continue;
+    if (badEndCategoryPenalty(leftEnd) >= 180) continue;
+    if (badStartCategoryPenalty(rightStart) >= 180 && startsLowercase(words[split]) && !isLowercaseSentenceLikeStart(rightStart, normalizeToken(words[split + 1] || ""))) continue;
+    if (isNumberLike(leftEnd) && UNIT_WORDS.has(rightStart)) continue;
+    if (UNIT_WORDS.has(leftEnd) && isNumberTerm(rightStart)) continue;
+    if (hasSplitCapitalizedNounPhraseBeforePredicate(words.slice(0, split), words.slice(split))) continue;
     if (wouldBreakProtectedPhraseAt(words.map((text) => ({ text })), split - 1, keepTogetherPhrases)) continue;
     return split;
   }
@@ -1060,18 +1859,54 @@ function scoreSrtTextSplit(words, split, originalSplit, settings, keepTogetherPh
   const startWord = normalizeToken(rightWords[0]);
   let score = Math.abs(split - originalSplit) * 12;
   score += Math.abs(leftText.length - rightText.length) * 2;
+  score += scoreCaptionQuality(leftWords, settings, true);
+  score += scoreCaptionQuality(rightWords, settings, false);
 
   if (leftWords.length < 2 || rightWords.length < 2) score += 1000;
   if (split === originalSplit && leftWords.length <= 2 && rightWords.length > 2) score += 100;
-  if (leftText.length > settings.maximumCharactersPerCaption) score += (leftText.length - settings.maximumCharactersPerCaption) * 20;
-  if (rightText.length > settings.maximumCharactersPerCaption) score += (rightText.length - settings.maximumCharactersPerCaption) * 20;
-  if (BAD_END_WORDS.has(endWord)) score += 220;
+  score += characterTargetPenalty(leftText.length, settings) * 4;
+  score += characterTargetPenalty(rightText.length, settings) * 4;
+  score += badEndCategoryPenalty(endWord);
   if (WEAK_END_WORDS.has(endWord)) score += 85;
-  if (BAD_START_WORDS.has(startWord) && startsLowercase(rightWords[0])) score += 220;
-  if (WEAK_START_WORDS.has(startWord) && /^[a-z]/.test(rightWords[0])) score += 120;
+  if (startsLowercase(rightWords[0]) && !isLowercaseSentenceLikeStart(startWord, normalizeToken(rightWords[1] || ""))) score += badStartCategoryPenalty(startWord);
+  if (isLikelySentenceStart({ text: rightWords[0] })) score -= 120;
+  if (containsLikelySentenceStartAfterFirst(leftWords)) score += 260;
+  if (containsLikelySentenceStartAfterFirst(rightWords)) score += 140;
   if (/[,:;]$/.test(leftWords[leftWords.length - 1])) score += 160;
   if (wouldBreakProtectedPhraseAt(words.map((text) => ({ text })), split - 1, keepTogetherPhrases)) score += 1000;
   if (isNumberLike(endWord) && UNIT_WORDS.has(startWord)) score += 1000;
+  if (UNIT_WORDS.has(endWord) && isNumberTerm(startWord)) score += 1000;
+  if (hasIncompleteOpenerFragment(leftWords, rightWords)) score += 800;
+  if (hasSplitTimeOrMeasurementPhrase(leftWords, rightWords)) score += 1000;
+  if (isTemporalOpenerFragment(leftWords, rightWords)) score += 1000;
+  if (hasSplitCapitalizedNounPhraseBeforePredicate(leftWords, rightWords)) score += 1000;
+  if (hasLowercaseContinuationBreak(leftWords, rightWords)) score += 500;
+
+  return score;
+}
+
+function scoreCaptionQuality(words, settings, isLeftSide) {
+  if (words.length === 0) return 5000;
+  const text = words.join(" ");
+  const firstWord = words[0];
+  const lastWord = words[words.length - 1];
+  const first = normalizeToken(firstWord);
+  const second = normalizeToken(words[1] || "");
+  const last = normalizeToken(lastWord);
+  let score = 0;
+
+  if (settings.maximumRowsPerCaption === 1 && text.length > settings.maximumCharactersPerRow) {
+    score += 5000 + ((text.length - settings.maximumCharactersPerRow) * 150);
+  }
+  if (words.length === 1) score += 3000;
+  if (words.length === 2) score += 250;
+  if (isLeftSide) {
+    score += badEndCategoryPenalty(last);
+    if (WEAK_END_WORDS.has(last)) score += 160;
+    if (/[,:;]$/.test(lastWord)) score += 160;
+  } else if (startsLowercase(firstWord) && !isLowercaseSentenceLikeStart(first, second)) {
+    score += badStartCategoryPenalty(first);
+  }
 
   return score;
 }
@@ -1210,13 +2045,24 @@ function mergeSingleWordSrtCues(cues) {
     }
 
     const nextCue = cues[index + 1];
+    const cueWord = normalizeToken(cue.text);
+    const previous = merged[merged.length - 1];
+    const previousWords = tokenList(previous?.text || "");
+    const nextWords = tokenList(nextCue?.text || "");
+    if (previous && normalizeToken(previousWords[previousWords.length - 1] || "") === cueWord) {
+      previous.timing = `${previous.timing.split("-->")[0].trim()} --> ${cue.timing.split("-->")[1].trim()}`;
+      return merged;
+    }
+    if (nextCue && normalizeToken(nextWords[0] || "") === cueWord) {
+      nextCue.timing = `${cue.timing.split("-->")[0].trim()} --> ${nextCue.timing.split("-->")[1].trim()}`;
+      return merged;
+    }
     if (isClauseSubjectFragment(cue.text) && nextCue) {
       nextCue.text = `${cue.text} ${nextCue.text}`.trim();
       nextCue.timing = `${cue.timing.split("-->")[0].trim()} --> ${nextCue.timing.split("-->")[1].trim()}`;
       return merged;
     }
 
-    const previous = merged[merged.length - 1];
     if (previous && !endsSentence(previous.text) && !endsSentence(cue.text)) {
       previous.text = `${previous.text} ${cue.text}`.trim();
       previous.timing = `${previous.timing.split("-->")[0].trim()} --> ${cue.timing.split("-->")[1].trim()}`;
@@ -1299,7 +2145,7 @@ function shouldSplitAfterCommaClause(words, index) {
   if (!/[,:;]$/.test(words[index] || "")) return false;
   const next = normalizeToken(words[index + 1] || "");
   if (!next) return false;
-  if (BAD_START_WORDS.has(next) || next === "and" || next === "or") return false;
+  if (badStartCategoryPenalty(next) >= 180 || isConjunction(next)) return false;
   if (startsUppercase(words[index + 1])) return true;
   if (CLAUSE_SUBJECT_STARTS.has(next) && index + 1 === words.length - 1) return true;
   if (!CLAUSE_SUBJECT_STARTS.has(next)) return false;
@@ -1419,9 +2265,12 @@ function delay(ms) {
 
 module.exports = {
   buildKeepTogetherPhrases,
+  buildSrtFromSentences,
   buildSrtFromUtterances,
+  extractSrt,
   postProcessSrtText,
   applySrtRules,
   splitSrtAtSentenceBoundaries,
+  findSubtitleIssues,
   defaultSettings
 };
