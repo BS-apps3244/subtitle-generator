@@ -104,7 +104,7 @@ const defaultSettings = {
     target_duration: 1.2,
     maximum_duration: 3,
     caption_gap: 0,
-    split_on_silence_gap: 0.2,
+    split_on_silence_gap: 0.5,
     maximum_characters_per_row: 45,
     maximum_rows_per_caption: 1,
     style: "compliance"

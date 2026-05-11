@@ -216,7 +216,7 @@ function collectSettings() {
       target_duration: Number($("#target-duration").value || 1.2),
       maximum_duration: Number($("#max-duration").value || 3),
       caption_gap: Number($("#caption-gap").value || 0),
-      split_on_silence_gap: Number($("#silence-gap").value || 0.2),
+      split_on_silence_gap: Number($("#silence-gap").value || 0.5),
       style: $("#subtitle-style").value
     }
   };
