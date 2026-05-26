@@ -11,10 +11,15 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const UPDATE_CHECK_INTERVAL_MS = 60 * 1000;
+const SUPPORTED_MEDIA_EXTENSIONS = new Set([
+  "mp4", "mpeg", "mpg", "mpe", "mov", "m4v", "avi", "wmv", "webm", "mkv", "flv", "3gp", "3g2",
+  "mp3", "wav", "aac", "m4a", "flac", "ogg", "oga", "opus", "wma", "aiff", "aif", "amr"
+]);
 
 window.addEventListener("DOMContentLoaded", async () => {
   bindTabs();
   bindJobs();
+  bindFileDrops();
   bindSettings();
   bindDictionary();
   bindHistory();
@@ -62,6 +67,67 @@ function bindJobs() {
   $("#start-batch").addEventListener("click", startBatch);
   $("#apply-rules").addEventListener("click", applyRulesToEditor);
   $("#save-srt").addEventListener("click", saveSelectedSrt);
+}
+
+function bindFileDrops() {
+  const dropTarget = document.querySelector(".queue-panel");
+  let dragDepth = 0;
+
+  ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+    document.addEventListener(eventName, (event) => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+  });
+
+  dropTarget.addEventListener("dragenter", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    dragDepth += 1;
+    dropTarget.classList.add("drop-active");
+  });
+
+  dropTarget.addEventListener("dragover", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.dataTransfer.dropEffect = "copy";
+  });
+
+  dropTarget.addEventListener("dragleave", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dropTarget.classList.remove("drop-active");
+  });
+
+  dropTarget.addEventListener("drop", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    dragDepth = 0;
+    dropTarget.classList.remove("drop-active");
+    const paths = droppedMediaPaths(event);
+    const added = addFiles(paths);
+
+    if (added > 0) {
+      setStatus(`Added ${added} file${added === 1 ? "" : "s"} to the queue.`);
+    } else if (event.dataTransfer.files.length > 0) {
+      setStatus("Drop supported audio or video files to add them to the queue.");
+    }
+  });
+}
+
+function hasDraggedFiles(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function droppedMediaPaths(event) {
+  return Array.from(event.dataTransfer.files || [])
+    .filter(isSupportedMediaFile)
+    .map((file) => window.subtitleApp.getPathForFile(file))
+    .filter(Boolean);
+}
+
+function isSupportedMediaFile(file) {
+  if (file.type.startsWith("audio/") || file.type.startsWith("video/")) return true;
+  const filePath = window.subtitleApp.getPathForFile(file);
+  return filePath && SUPPORTED_MEDIA_EXTENSIONS.has(filePath.split(".").pop().toLowerCase());
 }
 
 function bindSettings() {
@@ -191,6 +257,7 @@ function updateInstallProgress(event) {
 
 function hydrateSettings() {
   $("#api-key").value = state.settings.apiKey || "";
+  $("#transcription-provider").value = state.settings.transcriptionProvider || "local-whisper";
   $("#output-folder").value = state.settings.outputFolder || "";
   $("#max-chars").value = state.settings.subtitleDefaults.maximum_characters_per_row;
   $("#max-rows").value = state.settings.subtitleDefaults.maximum_rows_per_caption;
@@ -208,6 +275,7 @@ function collectSettings() {
   return {
     ...state.settings,
     apiKey: $("#api-key").value.trim(),
+    transcriptionProvider: $("#transcription-provider").value,
     outputFolder: $("#output-folder").value.trim(),
     subtitleDefaults: {
       maximum_characters_per_row: Number($("#max-chars").value || 45),
@@ -239,6 +307,7 @@ function collectDictionary() {
 
 function addFiles(paths) {
   const known = new Set(state.queue.map((item) => item.filePath));
+  let added = 0;
   paths.forEach((filePath) => {
     if (!known.has(filePath)) {
       state.queue.push({
@@ -247,10 +316,13 @@ function addFiles(paths) {
         status: "queued",
         message: "Ready"
       });
+      known.add(filePath);
+      added += 1;
     }
   });
   if (!state.selectedFilePath && state.queue[0]) state.selectedFilePath = state.queue[0].filePath;
   renderQueue();
+  return added;
 }
 
 async function startBatch() {
@@ -295,6 +367,8 @@ async function saveSelectedSrt() {
     outputFolder: $("#output-folder").value.trim(),
     srtText: $("#srt-editor").value
   });
+  if (!outputPath) return;
+
   setStatus(`Saved ${outputPath}`);
 }
 

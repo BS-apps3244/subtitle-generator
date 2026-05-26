@@ -116,6 +116,13 @@
               Gladia API key
               <input id="api-key" type="password" autocomplete="off" placeholder="Paste API key locally" />
             </label>
+            <label class="field wide">
+              Transcription provider
+              <select id="transcription-provider">
+                <option value="local-whisper">Local Whisper</option>
+                <option value="gladia">Gladia</option>
+              </select>
+            </label>
             <label class="field output-field">
               Output folder
               <input id="output-folder" type="text" readonly />

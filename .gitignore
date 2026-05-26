@@ -33,4 +33,5 @@ Thumbs.db
 *.aac
 *.flac
 *.srt
-
+vendor/whisper/
+vendor/ffmpeg/

@@ -1,5 +1,6 @@
 const electron = process.versions.electron ? require("electron") : {};
 const { app, BrowserWindow, dialog, ipcMain, shell } = electron;
+const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const packageInfo = require("../package.json");
@@ -18,16 +19,74 @@ const RELEASES_PAGE_URL = "https://github.com/BS-apps3244/subtitle-generator/rel
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLL_ATTEMPTS = 450;
 const MAX_SRT_REPAIR_PASSES = 8;
+const LOCAL_WHISPER_MODEL_FILE = "ggml-base.en.bin";
+const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "aac", "m4a", "flac", "ogg", "oga", "opus", "wma", "aiff", "aif", "amr"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "mpeg", "mpg", "mpe", "mov", "m4v", "avi", "wmv", "webm", "mkv", "flv", "3gp", "3g2"]);
+const DEFAULT_GLOSSARY_RULES = [
+  { original: "base supplies", replacement: "Based Supplies" },
+  { original: "based supplies", replacement: "Based Supplies" },
+  { original: "baste supplies", replacement: "Based Supplies" },
+  { original: "face supplies", replacement: "Based Supplies" },
+  { original: "tallow and honey balm", replacement: "Tallow and Honey Balm" },
+  { original: "tallow and honey bomb", replacement: "Tallow and Honey Balm" },
+  { original: "beef tallow bomb", replacement: "beef tallow balm" },
+  { original: "the bomb", replacement: "the balm" },
+  { original: "this bomb", replacement: "this balm" },
+  { original: "grass fed", replacement: "grass-fed" },
+  { original: "grain, fed", replacement: "grain-fed" },
+  { original: "drop shipping", replacement: "dropshipping" },
+  { original: "onion, hydrosol", replacement: "onion hydrosol" },
+  { original: "onion, hydrosoil", replacement: "onion hydrosol" },
+  { original: "hydrosoil", replacement: "hydrosol" },
+  { original: "beef, tallow", replacement: "beef tallow" },
+  { original: "sulfur-rich, formula", replacement: "sulfur-rich formula" },
+  { original: "hit back, when you carry menopause and menopause", replacement: "hit perimenopause and menopause" },
+  { original: "hit back, when you carry", replacement: "hit perimenopause and" },
+  { original: "hit back when you carry", replacement: "hit perimenopause and" },
+  { original: "menopause and menopause", replacement: "menopause" },
+  { original: "where dermatologists can't", replacement: "my dermatologist can't" },
+  { original: "threw up the gentle cleanser", replacement: "threw out the gentle cleanser" },
+  { original: "in my week three", replacement: "by week three" },
+  { original: "does it your", replacement: "does your" },
+  { original: "mining my own business", replacement: "minding my own business" },
+  { original: "trim-fat", replacement: "trim fat" }
+];
+const DEFAULT_KEEP_TOGETHER_PHRASES = [
+  "beef tallow",
+  "raw honey",
+  "olive oil",
+  "prescription cream",
+  "tallow balm",
+  "grass-fed tallow",
+  "vitamin A"
+];
+const GENERIC_LOWERCASE_TERMS = [
+  "Tallow Company",
+  "Tallow brand",
+  "Tallow Balm",
+  "Tallow",
+  "Suet Fat",
+  "Suet Tallow",
+  "Suet",
+  "Trim Fat",
+  "Beef Tallow",
+  "Raw Honey",
+  "Olive Oil",
+  "Grass Fed",
+  "Grass-Fed",
+  "Grass-fed"
+];
 const ARTICLES = new Set(["a", "an", "the"]);
 const QUANTIFIER_DETERMINERS = new Set(["any", "every", "each", "some"]);
 const COORDINATING_CONJUNCTIONS = new Set(["and", "or", "but", "so"]);
 const SUBORDINATING_CONJUNCTIONS = new Set(["because", "if", "when", "while", "until", "than", "that", "which", "who", "whose"]);
 const PREPOSITIONS = new Set([
   "of", "to", "in", "on", "at", "by", "for", "from", "with", "without",
-  "into", "onto", "over", "under", "between", "about", "as", "off"
+  "into", "onto", "over", "under", "between", "about", "as", "off",
+  "behind", "before", "after", "during", "through"
 ]);
 const PHRASAL_VERB_PARTICLES = new Set([
-  "up", "down", "out", "away", "back", "through", "around", "over", "off"
+  "up", "down", "in", "out", "away", "back", "through", "around", "over", "off"
 ]);
 const AUXILIARY_VERBS = new Set([
   "is", "was", "were", "are", "be", "been", "being", "has", "have", "had",
@@ -35,7 +94,7 @@ const AUXILIARY_VERBS = new Set([
   "does", "did"
 ]);
 const NEGATIONS = new Set(["not", "no"]);
-const TEMPORAL_SENTENCE_STARTS = new Set(["after", "before", "first", "finally", "for", "today"]);
+const TEMPORAL_SENTENCE_STARTS = new Set(["after", "back", "before", "first", "finally", "for", "today"]);
 const TEMPORAL_NOUNS = new Set(["night", "morning", "afternoon", "evening", "day", "week", "month", "year", "time"]);
 const DEGREE_MODIFIERS = new Set(["very", "more", "most"]);
 const POSSESSIVE_DETERMINERS = new Set(["my", "your", "his", "her", "its", "our", "their"]);
@@ -78,13 +137,13 @@ const CAPITALIZED_NUMBER_TERMS = new Set(["One", "Two", "Three", "Four", "Five",
 const SINGLE_WORD_DETERMINERS = new Set(["single", "only", "same"]);
 const CLAUSE_SUBJECT_STARTS = new Set([
   "people", "teams", "projects", "captions", "subtitles", "files", "clips",
-  "we", "our", "she", "he", "they", "it", "this", "that", "your", "maya",
+  "we", "our", "she", "he", "they", "it", "this", "that", "your", "maya", "estrogen",
   "editors", "reviewers", "clients", "producers", "captions"
 ]);
 const CLAUSE_VERBS = new Set([
   "was", "wasn't", "were", "weren't", "is", "isn't", "are", "aren't",
   "became", "came", "went", "gets", "used", "started", "added", "built",
-  "tried", "worked", "said", "told",
+  "tried", "worked", "said", "told", "tells",
   "learned", "had", "would", "crack", "bleed", "make", "recognize",
   "presented", "reviewed", "approved", "adjusted", "organized"
 ]);
@@ -98,6 +157,7 @@ let autoUpdaterConfigured = false;
 
 const defaultSettings = {
   apiKey: "",
+  transcriptionProvider: "local-whisper",
   outputFolder: "",
   subtitleDefaults: {
     minimum_duration: 1,
@@ -354,7 +414,13 @@ ipcMain.handle("files:pick-inputs", async () => {
     title: "Choose video or audio files",
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Media", extensions: ["mp4", "mov", "m4v", "mp3", "wav", "aac", "m4a", "flac"] },
+      {
+        name: "Audio and Video",
+        extensions: [
+          "mp4", "mpeg", "mpg", "mpe", "mov", "m4v", "avi", "wmv", "webm", "mkv", "flv", "3gp", "3g2",
+          "mp3", "wav", "aac", "m4a", "flac", "ogg", "oga", "opus", "wma", "aiff", "aif", "amr"
+        ]
+      },
       { name: "All Files", extensions: ["*"] }
     ]
   });
@@ -370,9 +436,20 @@ ipcMain.handle("folders:pick-output", async () => {
 });
 
 ipcMain.handle("srt:save", async (_event, { filePath, outputFolder, srtText }) => {
-  const folder = outputFolder || path.dirname(filePath);
-  fs.mkdirSync(folder, { recursive: true });
-  const outputPath = path.join(folder, `${path.parse(filePath).name}.srt`);
+  const baseName = `${path.parse(filePath).name}.srt`;
+  const defaultFolder = outputFolder || path.dirname(filePath);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Save SRT file",
+    defaultPath: path.join(defaultFolder, baseName),
+    filters: [
+      { name: "SubRip Subtitle", extensions: ["srt"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
+  });
+  if (result.canceled || !result.filePath) return "";
+
+  const outputPath = result.filePath;
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, srtText, "utf8");
   upsertHistorySrt(filePath, srtText, outputPath);
   return outputPath;
@@ -410,6 +487,15 @@ ipcMain.handle("history:load-srt", (_event, historyId) => {
 
 ipcMain.handle("gladia:transcribe", async (_event, payload) => {
   const settings = readSettings();
+  const provider = payload.transcriptionProvider || settings.transcriptionProvider || "local-whisper";
+  if (provider === "local-whisper") {
+    return transcribeWithLocalWhisper(payload, settings);
+  }
+
+  if (provider !== "gladia") {
+    throw new Error(`Unknown transcription provider: ${provider}`);
+  }
+
   const apiKey = payload.apiKey || settings.apiKey;
 
   if (!apiKey) {
@@ -470,6 +556,224 @@ ipcMain.handle("gladia:transcribe", async (_event, payload) => {
 });
 }
 
+async function transcribeWithLocalWhisper(payload, settings) {
+  const filePath = payload.filePath;
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error("The selected media file could not be found.");
+  }
+
+  let whisperInputPath = filePath;
+  let temporaryAudioPath = "";
+  try {
+    if (isVideoFile(filePath)) {
+      emitJobProgress(filePath, "preparing", "Extracting audio from video");
+      temporaryAudioPath = await convertVideoToAudio(filePath);
+      whisperInputPath = temporaryAudioPath;
+    }
+
+    emitJobProgress(filePath, "transcribing", "Transcribing locally with Whisper");
+    const rawSrt = await runLocalWhisper(whisperInputPath, payload);
+  const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
+  const srtText = applySrtRules(
+    rawSrt,
+    payload.subtitleDefaults || settings.subtitleDefaults || defaultSettings.subtitleDefaults,
+    keepTogetherPhrases,
+    payload.spellingRules || settings.spellingRules || []
+  );
+
+  const id = `local-whisper-${Date.now()}`;
+  const archivePath = archiveSrt(id, path.basename(filePath), srtText);
+  const updatedSettings = readSettings();
+  const existingIndex = updatedSettings.history.findIndex((item) => item.filePath === filePath);
+  const historyItem = {
+    id,
+    filePath,
+    fileName: path.basename(filePath),
+    createdAt: new Date().toISOString(),
+    status: "done",
+    duration: null,
+    archivePath,
+    outputPath: "",
+    provider: "local-whisper"
+  };
+  if (existingIndex >= 0) updatedSettings.history.splice(existingIndex, 1);
+  updatedSettings.history.unshift(historyItem);
+  updatedSettings.history = updatedSettings.history.slice(0, 100);
+  writeSettings(updatedSettings);
+
+  emitJobProgress(filePath, "review", "Ready to review and export");
+  return {
+    id,
+    filePath,
+    fileName: path.basename(filePath),
+    srtText,
+      raw: {
+        provider: "local-whisper",
+        normalizedInput: temporaryAudioPath ? "video-to-mp3" : "original"
+      }
+  };
+  } finally {
+    if (temporaryAudioPath) {
+      fs.rmSync(temporaryAudioPath, { force: true });
+    }
+  }
+}
+
+function whisperResourceDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "whisper")
+    : path.join(__dirname, "..", "vendor", "whisper");
+}
+
+function whisperCliPath() {
+  return path.join(whisperResourceDir(), "bin", "Release", "whisper-cli.exe");
+}
+
+function whisperModelPath() {
+  return path.join(whisperResourceDir(), LOCAL_WHISPER_MODEL_FILE);
+}
+
+function ffmpegResourceDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "ffmpeg")
+    : path.join(__dirname, "..", "vendor", "ffmpeg");
+}
+
+function ffmpegPath() {
+  return path.join(ffmpegResourceDir(), "bin", "ffmpeg.exe");
+}
+
+function isVideoFile(filePath) {
+  return VIDEO_EXTENSIONS.has(path.extname(filePath).slice(1).toLowerCase());
+}
+
+function isAudioFile(filePath) {
+  return AUDIO_EXTENSIONS.has(path.extname(filePath).slice(1).toLowerCase());
+}
+
+function convertVideoToAudio(filePath) {
+  const exePath = ffmpegPath();
+  if (!fs.existsSync(exePath)) {
+    throw new Error("FFmpeg is missing from the app package. Reinstall the app, then try the video again.");
+  }
+  if (!isVideoFile(filePath) && !isAudioFile(filePath)) {
+    throw new Error("The selected file is not a supported audio or video format.");
+  }
+
+  const outputPath = path.join(
+    app.getPath("temp"),
+    `subtitle-generator-audio-${Date.now()}-${Math.random().toString(16).slice(2)}.mp3`
+  );
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel", "error",
+    "-i", filePath,
+    "-vn",
+    "-map", "0:a:0",
+    "-ac", "1",
+    "-ar", "16000",
+    "-codec:a", "libmp3lame",
+    "-b:a", "128k",
+    outputPath
+  ];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(exePath, args, {
+      cwd: path.dirname(exePath),
+      windowsHide: true
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        fs.rmSync(outputPath, { force: true });
+        reject(new Error(`Could not extract audio from this video: ${stderr.trim() || `FFmpeg exit code ${code}`}`));
+        return;
+      }
+      resolve(outputPath);
+    });
+  });
+}
+
+function buildWhisperPrompt(payload) {
+  const terms = new Set(["Based Supplies", "Tallow and Honey Balm"]);
+  (payload.keepTogetherPhrases || []).forEach((phrase) => {
+    if (phrase) terms.add(String(phrase).trim());
+  });
+  (payload.spellingRules || []).forEach((rule) => {
+    if (rule.replacement) terms.add(String(rule.replacement).trim());
+  });
+  return Array.from(terms).filter(Boolean).join(", ");
+}
+
+function withDefaultSpellingRules(spellingRules = []) {
+  const rules = [...DEFAULT_GLOSSARY_RULES];
+  (spellingRules || []).forEach((rule) => {
+    if (rule?.original && rule?.replacement) rules.push(rule);
+  });
+  return rules;
+}
+
+function runLocalWhisper(filePath, payload) {
+  const exePath = whisperCliPath();
+  const modelPath = whisperModelPath();
+  if (!fs.existsSync(exePath)) {
+    throw new Error("Local Whisper is missing from the app package.");
+  }
+  if (!fs.existsSync(modelPath)) {
+    throw new Error("Local Whisper model is missing from the app package.");
+  }
+
+  const outputBase = path.join(app.getPath("temp"), `subtitle-generator-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const args = [
+    "-m", modelPath,
+    "-f", filePath,
+    "-osrt",
+    "-of", outputBase,
+    "-l", "en",
+    "-t", String(Math.max(2, Math.min(8, require("os").cpus().length || 4))),
+    "-np"
+  ];
+  const prompt = buildWhisperPrompt(payload);
+  if (prompt) args.push("--prompt", prompt);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(exePath, args, {
+      cwd: path.dirname(exePath),
+      windowsHide: true
+    });
+    let stderr = "";
+    let stdout = "";
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Local Whisper failed: ${(stderr || stdout).trim() || `exit code ${code}`}`));
+        return;
+      }
+
+      const srtPath = `${outputBase}.srt`;
+      try {
+        const srtText = fs.readFileSync(srtPath, "utf8");
+        fs.rmSync(srtPath, { force: true });
+        resolve(srtText);
+      } catch (error) {
+        reject(new Error(`Local Whisper finished but did not create an SRT file: ${error.message}`));
+      }
+    });
+  });
+}
+
 async function uploadFile(apiKey, filePath) {
   const form = new FormData();
   const buffer = fs.readFileSync(filePath);
@@ -487,7 +791,7 @@ async function uploadFile(apiKey, filePath) {
 
 async function startTranscription(apiKey, audioUrl, payload) {
   const vocabulary = normalizeVocabulary(payload.vocabulary || []);
-  const spellingRules = normalizeSpellingRules(payload.spellingRules || []);
+  const spellingRules = normalizeSpellingRules(withDefaultSpellingRules(payload.spellingRules || []));
 
   const body = {
     audio_url: audioUrl,
@@ -687,7 +991,7 @@ function buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrase
 
 function formatTimedCues(cues, settings) {
   return cues.map((cue, index) => {
-    const lines = wrapSubtitleText(cue.text, settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
+    const lines = wrapSubtitleText(formatSubtitleForExport(cue.text), settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
     return `${index + 1}\n${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}\n${lines}`;
   }).join("\n\n");
 }
@@ -736,7 +1040,17 @@ function buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases) {
   costs[count] = 0;
 
   for (let startIndex = count - 1; startIndex >= 0; startIndex -= 1) {
-    candidateCueEnds(words, startIndex, settings).forEach((endIndex) => {
+    const candidates = candidateCueEnds(words, startIndex, settings);
+    const unprotectedCandidates = candidates.filter((endIndex) => (
+      endIndex >= count - 1 || (
+        !wouldBreakProtectedPhraseAt(words, endIndex, keepTogetherPhrases)
+        && !hasDanglingFunctionPhrase(
+          words.slice(startIndex, endIndex + 1).map((word) => word.text),
+          words.slice(endIndex + 1, Math.min(words.length, endIndex + 5)).map((word) => word.text)
+        )
+      )
+    ));
+    (unprotectedCandidates.length > 0 ? unprotectedCandidates : candidates).forEach((endIndex) => {
       const cost = scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPhrases) + costs[endIndex + 1];
       if (cost < costs[startIndex]) {
         costs[startIndex] = cost;
@@ -753,6 +1067,89 @@ function buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases) {
   }
 
   return cues;
+}
+
+function optimizeSrtCaptionWindows(cues, settings, keepTogetherPhrases) {
+  if (settings.maximumRowsPerCaption !== 1) return cues;
+
+  const optimized = [];
+  let window = [];
+
+  const flushWindow = () => {
+    if (window.length === 0) return;
+    optimized.push(...optimizeSrtCaptionWindow(window, settings, keepTogetherPhrases));
+    window = [];
+  };
+
+  cues.forEach((cue) => {
+    if (!cue?.text) return;
+    if (shouldStartNewCaptionWindow(window, cue)) flushWindow();
+    window.push(cue);
+    if (cue.sentenceEnd || shouldFlushCaptionWindow(window, settings)) {
+      flushWindow();
+    }
+  });
+  flushWindow();
+
+  return optimized;
+}
+
+function shouldStartNewCaptionWindow(window, nextCue) {
+  if (window.length === 0) return false;
+  const previousWords = tokenList(window[window.length - 1].text);
+  const nextWords = tokenList(nextCue.text);
+  if (previousWords.length === 0 || nextWords.length === 0) return false;
+  const previousEndPenalty = badEndCategoryPenalty(normalizeToken(previousWords[previousWords.length - 1]));
+  if (isStrongSentenceBoundary(previousWords, nextWords) && !isConjunction(normalizeToken(previousWords[previousWords.length - 1]))) return true;
+  return startsUppercase(nextWords[0])
+    && isLikelySentenceStart({ text: nextWords[0] })
+    && previousEndPenalty < 180;
+}
+
+function shouldFlushCaptionWindow(window, settings) {
+  const firstTiming = window[0]?.timing || "";
+  const lastTiming = window[window.length - 1]?.timing || "";
+  const start = parseSrtTime(firstTiming.split("-->")[0]?.trim());
+  const end = parseSrtTime(lastTiming.split("-->")[1]?.trim());
+  const text = window.map((cue) => cue.text).join(" ");
+  return (Number.isFinite(start) && Number.isFinite(end) && end - start >= settings.maximumDuration * 2.5)
+    || text.length >= settings.maximumCharactersPerRow * Math.max(3, settings.maximumRowsPerCaption + 2);
+}
+
+function optimizeSrtCaptionWindow(cues, settings, keepTogetherPhrases) {
+  if (cues.length === 1 && cues[0].text.length <= settings.maximumCharactersPerRow * settings.maximumRowsPerCaption) {
+    return cues;
+  }
+
+  const words = approximateTimedWordsFromSrtCues(cues);
+  if (words.length < 3) return cues;
+
+  return timedCuesToSrtCueObjects(buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases));
+}
+
+function approximateTimedWordsFromSrtCues(cues) {
+  return cues.flatMap((cue) => {
+    const [startText, endText] = cue.timing.split("-->").map((part) => part.trim());
+    const start = parseSrtTime(startText);
+    const end = parseSrtTime(endText);
+    const words = tokenList(cue.text);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || words.length === 0) return [];
+
+    const totalWeight = words.reduce((sum, word) => sum + Math.max(1, word.length), 0);
+    let cursor = start;
+    return words.map((word, index) => {
+      const isLast = index === words.length - 1;
+      const share = Math.max(1, word.length) / totalWeight;
+      const wordEnd = isLast ? end : cursor + ((end - start) * share);
+      const timedWord = {
+        text: word,
+        start: cursor,
+        end: Math.max(cursor + 0.03, wordEnd)
+      };
+      cursor = wordEnd;
+      return timedWord;
+    });
+  });
 }
 
 function repairTimedCues(cues, settings, keepTogetherPhrases) {
@@ -812,7 +1209,7 @@ function scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPh
   const endWord = normalizeToken(words[endIndex].text);
   const nextWord = normalizeToken(words[endIndex + 1]?.text || "");
   const nextRawWord = words[endIndex + 1]?.text || "";
-  let score = 0;
+  let score = 180;
 
   score += Math.abs(duration - settings.targetDuration) * 55;
   if (duration < settings.minimumDuration) score += (settings.minimumDuration - duration) * 180;
@@ -829,6 +1226,7 @@ function scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPh
   if (UNIT_WORDS.has(endWord) && isNumberTerm(nextWord)) score += 1200;
   if (hasLowercaseContinuationBreak(cueTextWords, nextTextWords)) score += 900;
   if (hasIncompleteVerbPhraseBeforeObject(cueTextWords, nextTextWords)) score += 1000;
+  if (hasDanglingFunctionPhrase(cueTextWords, nextTextWords)) score += 1400;
   if (hasIncompleteOpenerFragment(cueTextWords, nextTextWords)) score += 900;
   if (hasSplitCapitalizedNounPhraseBeforePredicate(cueTextWords, nextTextWords)) score += 1000;
 
@@ -838,9 +1236,9 @@ function scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPh
   if (/[,:;]$/.test(words[endIndex].text)) score += 120;
   if (endsSentence(text)) score -= 260;
   if (/[!?]$/.test(words[endIndex].text)) score -= 80;
-  if (isLikelySentenceStart(words[endIndex + 1]) && duration >= settings.minimumDuration) score -= 190;
+  if (isLikelySentenceStart(words[endIndex + 1]) && duration >= settings.minimumDuration && badEndCategoryPenalty(endWord) < 120) score -= 190;
   if (startsLowercase(nextRawWord) && !isLowercaseSentenceLikeStart(nextWord, normalizeToken(words[endIndex + 2]?.text || ""))) score += 220;
-  if (splitTextAtLikelySentenceStarts(text).length > 1) score += 600;
+  if (splitTextAtLikelySentenceStarts(text).length > 1) score += 5000;
 
   return score;
 }
@@ -909,6 +1307,7 @@ function scoreBreak(words, startIndex, endIndex, targetEnd, settings, keepTogeth
   let score = Math.abs(endIndex - targetEnd) * 4;
 
   if (wouldBreakProtectedPhraseAt(words, endIndex, keepTogetherPhrases)) score += 1000;
+  if (hasDanglingFunctionPhrase(segment.map((word) => word.text), words.slice(endIndex + 1, endIndex + 5).map((word) => word.text))) score += 1200;
   if (countWords(text) < 2) score += 500;
   if (endsSentence(text)) score -= 80;
   if (/[,:;]$/.test(words[endIndex].text)) score += 120;
@@ -930,8 +1329,8 @@ function badEndCategoryPenalty(token) {
   if (!token) return 0;
   if (isDeterminer(token)) return 260;
   if (SUBJECT_PRONOUNS.has(token) && token !== "it") return 180;
-  if (isConjunction(token)) return 220;
-  if (isPreposition(token)) return 190;
+  if (isConjunction(token)) return 480;
+  if (isPreposition(token)) return 300;
   if (isPhrasalVerbParticle(token)) return 170;
   if (isAuxiliary(token)) return 130;
   if (isSubordinatingConjunction(token)) return 130;
@@ -1125,12 +1524,19 @@ function mergeSingleWordCues(cues) {
 }
 
 function cleanWord(word) {
-  return String(word).trim();
+  return cleanSubtitleText(word);
 }
 
 function cleanSubtitleText(text) {
   return String(text)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatSubtitleForExport(text) {
+  return cleanSubtitleText(text)
     .replace(/\./g, "")
+    .replace(/,+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -1159,27 +1565,42 @@ function postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spel
     .map((cue) => ({
       ...cue,
       text: cleanSubtitleText(applyLocalSpellingRules(cue.text, spellingRules))
-        .replace(/[.!?,]+$/g, "")
         .trim()
     }))
     .filter((cue) => cue.text);
 
-  const commaAdjustedCues = moveLeadingCommaWordsToPreviousCue(cleanedCues, findLeadingCommaWordIssues(cleanedCues));
+  const optimizedCues = optimizeSrtCaptionWindows(cleanedCues, settings, keepTogetherPhrases);
+  const commaAdjustedCues = moveLeadingCommaWordsToPreviousCue(optimizedCues, findLeadingCommaWordIssues(optimizedCues));
   const smoothedCues = smoothAwkwardSrtBreaks(mergeSingleWordSrtCues(commaAdjustedCues), settings, keepTogetherPhrases).map((cue) => ({
     ...cue,
     text: cleanSubtitleText(applyLocalSpellingRules(cue.text, spellingRules))
-        .replace(/[.!?,]+$/g, "")
         .trim()
   })).filter((cue) => cue.text);
-  return repairSrtCuesUntilStable(smoothedCues, settings, keepTogetherPhrases);
+  const repairedCues = repairSrtCuesUntilStable(optimizeSrtCaptionWindows(smoothedCues, settings, keepTogetherPhrases), settings, keepTogetherPhrases);
+  const grammarRepairedCues = repairLeadingPrepositionBeforeSentenceStartCues(repairDanglingFunctionPhraseCues(repairedCues, settings), settings);
+  const finalOptimizedCues = optimizeSrtCaptionWindows(grammarRepairedCues, settings, keepTogetherPhrases);
+  const finalGrammarRepairedCues = repairLeadingPrepositionBeforeSentenceStartCues(finalOptimizedCues, settings);
+  return splitCuesAtLikelySentenceStarts(finalGrammarRepairedCues, keepTogetherPhrases);
 }
 
 function applyLocalSpellingRules(text, spellingRules) {
-  return (spellingRules || []).reduce((updated, rule) => {
+  return withDefaultSpellingRules(spellingRules).reduce((updated, rule) => {
     const original = (rule.original || "").trim();
     const replacement = (rule.replacement || "").trim();
     if (!original || !replacement) return updated;
-    return updated.replace(new RegExp(escapeRegExp(original), "gi"), replacement);
+    return updated.replace(new RegExp(escapeRegExp(original), "gi"), (match) => {
+      return startsUppercase(match) ? capitalizeFirst(replacement) : replacement;
+    });
+  }, normalizeGenericTallowCasing(text));
+}
+
+function capitalizeFirst(text) {
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+}
+
+function normalizeGenericTallowCasing(text) {
+  return GENERIC_LOWERCASE_TERMS.reduce((updated, term) => {
+    return updated.replace(new RegExp(`\\b${escapeRegExp(term)}\\b`, "g"), term.toLowerCase());
   }, String(text));
 }
 
@@ -1221,7 +1642,6 @@ function normalizeSrtCueText(cues) {
   return cues.map((cue) => ({
     ...cue,
     text: cleanSubtitleText(cue.text)
-      .replace(/[.!?,]+$/g, "")
       .trim()
   })).filter((cue) => cue.text);
 }
@@ -1344,6 +1764,19 @@ function hasIncompleteVerbPhraseBeforeObject(words, nextWords) {
   if (!COMPLEMENT_TAKING_VERBS.has(last)) return false;
   if (!isAuxiliary(previous) && previous !== "to") return false;
   return SUBJECT_PRONOUNS.has(nextStart) || OBJECT_PRONOUNS.has(nextStart) || isDeterminer(nextStart);
+}
+
+function hasDanglingFunctionPhrase(words, nextWords) {
+  if (words.length < 2 || nextWords.length === 0) return false;
+  const last = normalizeToken(words[words.length - 1]);
+  const previous = normalizeToken(words[words.length - 2]);
+  const nextStart = normalizeToken(nextWords[0]);
+  if (isPreposition(previous) && isDeterminer(last)) return true;
+  if (QUESTION_SENTENCE_STARTS.has(previous) && isAuxiliary(last)) return true;
+  if (isAuxiliary(last) && words.slice(-4).some((word) => QUESTION_SENTENCE_STARTS.has(normalizeToken(word)))) {
+    return SUBJECT_PRONOUNS.has(nextStart) || isDeterminer(nextStart) || CLAUSE_SUBJECT_STARTS.has(nextStart);
+  }
+  return false;
 }
 
 function hasIncompleteOpenerFragment(words, nextWords) {
@@ -1598,26 +2031,95 @@ function moveLeadingCommaWordsToPreviousCue(cues, issues) {
   return updated.filter((cue) => cue.text);
 }
 
+function repairDanglingFunctionPhraseCues(cues, settings) {
+  const updated = cues.map((cue) => ({ ...cue }));
+
+  for (let index = 0; index < updated.length - 1; index += 1) {
+    const cue = updated[index];
+    const nextCue = updated[index + 1];
+    const cueWords = tokenList(cue.text);
+    let nextWords = tokenList(nextCue.text);
+    if (!hasDanglingFunctionPhrase(cueWords, nextWords)) continue;
+
+    const minWordsToMove = endsWithQuestionHelper(cueWords) ? 2 : 1;
+    const movedWords = [];
+    while (nextWords.length > 0 && movedWords.length < minWordsToMove) {
+      const candidateWords = [...cueWords, ...movedWords, nextWords[0]];
+      if (candidateWords.join(" ").length > settings.maximumCharactersPerRow) break;
+      movedWords.push(nextWords.shift());
+    }
+
+    while (
+      nextWords.length > 0
+      && hasDanglingFunctionPhrase([...cueWords, ...movedWords], nextWords)
+      && [...cueWords, ...movedWords, nextWords[0]].join(" ").length <= settings.maximumCharactersPerRow
+    ) {
+      movedWords.push(nextWords.shift());
+    }
+
+    if (movedWords.length === 0) continue;
+    cue.text = [...cueWords, ...movedWords].join(" ");
+    nextCue.text = nextWords.join(" ");
+    const timing = splitCombinedTiming(cue.timing, nextCue.timing, cue.text, nextCue.text);
+    cue.timing = timing.current;
+    nextCue.timing = timing.next;
+  }
+
+  return updated.filter((cue) => cue.text);
+}
+
+function repairLeadingPrepositionBeforeSentenceStartCues(cues, settings) {
+  const updated = cues.map((cue) => ({ ...cue }));
+
+  for (let index = 1; index < updated.length; index += 1) {
+    const previousCue = updated[index - 1];
+    const cue = updated[index];
+    const words = tokenList(cue.text);
+    if (words.length < 2) continue;
+    const first = normalizeToken(words[0]);
+    const second = words[1];
+    const secondToken = normalizeToken(second);
+    if (!isPreposition(first) || !startsUppercase(second)) continue;
+    if (!isLikelySentenceStart({ text: second }) && secondToken !== "because") continue;
+    const previousText = `${previousCue.text} ${words[0]}`.trim();
+    if (previousText.length > settings.maximumCharactersPerRow) continue;
+    cue.text = words.slice(1).join(" ");
+    previousCue.text = previousText;
+    const timing = splitCombinedTiming(previousCue.timing, cue.timing, previousCue.text, cue.text);
+    previousCue.timing = timing.current;
+    cue.timing = timing.next;
+  }
+
+  return updated.filter((cue) => cue.text);
+}
+
+function endsWithQuestionHelper(words) {
+  if (words.length < 2) return false;
+  const last = normalizeToken(words[words.length - 1]);
+  const previous = normalizeToken(words[words.length - 2]);
+  return QUESTION_SENTENCE_STARTS.has(previous) && isAuxiliary(last);
+}
+
 function srtCueSignature(cues) {
   return cues.map((cue) => `${cue.timing}\n${cue.text}`).join("\n\n");
 }
 
-function splitCuesAtLikelySentenceStarts(cues) {
+function splitCuesAtLikelySentenceStarts(cues, keepTogetherPhrases = []) {
   return cues.flatMap((cue) => {
-    const pieces = splitTextAtLikelySentenceStarts(cue.text);
+    const pieces = splitTextAtLikelySentenceStarts(cue.text, keepTogetherPhrases);
     if (pieces.length <= 1) return [cue];
     return splitTimingAcrossPieces(cue.timing, pieces);
   });
 }
 
-function splitTextAtLikelySentenceStarts(text) {
+function splitTextAtLikelySentenceStarts(text, keepTogetherPhrases = []) {
   const words = tokenList(text);
   if (words.length < 4) return [cleanSubtitleText(text)];
 
   const pieces = [];
   let current = [];
   words.forEach((word, index) => {
-    if (index > 0 && current.length >= 2 && shouldStartNewSentencePiece(words, index)) {
+    if (index > 0 && current.length >= 2 && shouldStartNewSentencePiece(words, index, keepTogetherPhrases)) {
       pieces.push(current.join(" "));
       current = [];
     }
@@ -1627,20 +2129,36 @@ function splitTextAtLikelySentenceStarts(text) {
   return pieces;
 }
 
-function shouldStartNewSentencePiece(words, index) {
+function shouldStartNewSentencePiece(words, index, keepTogetherPhrases = []) {
+  if (wouldBreakProtectedPhraseAt(words.map((text) => ({ text })), index - 1, keepTogetherPhrases)) return false;
   const word = words[index];
   const token = normalizeToken(word);
   const previousToken = normalizeToken(words[index - 1]);
   const nextToken = normalizeToken(words[index + 1] || "");
+  if (previousToken === "vitamin" && token === "a") return false;
   const isCapitalizedSubjectStart = isCapitalizedSubjectBeforePredicate(word, previousToken, nextToken);
   const isCapitalizedNounStart = isCapitalizedNounPhraseBeforePredicate(words, index, previousToken);
+  const isCapitalizedDiscourseStart = startsUppercase(word) && DISCOURSE_SENTENCE_STARTS.has(token);
   if (
     !isLikelySentenceStart({ text: word })
     && !isCapitalizedSubjectStart
     && !isCapitalizedNounStart
+    && !isCapitalizedDiscourseStart
   ) return false;
   if (POSSESSIVE_DETERMINERS.has(previousToken)) return false;
-  if ((isConjunction(previousToken) || isSubordinatingConjunction(previousToken) || isPreposition(previousToken)) && !isPhrasalVerbParticle(previousToken)) return false;
+  if (isCapitalizedDiscourseStart && !isConjunction(previousToken) && !isPreposition(previousToken) && !isAuxiliary(previousToken)) return true;
+  if (
+    previousToken === "that"
+    && startsUppercase(word)
+    && (
+      SENTENCE_START_CONTRACTIONS.has(token)
+      || DISCOURSE_SENTENCE_STARTS.has(token)
+      || TEMPORAL_SENTENCE_STARTS.has(token)
+      || IMPERATIVE_START_VERBS.has(token)
+    )
+  ) return true;
+  if (startsUppercase(word) && token === "because") return true;
+  if ((isConjunction(previousToken) || isSubordinatingConjunction(previousToken) || isPreposition(previousToken) || isAuxiliary(previousToken)) && !isPhrasalVerbParticle(previousToken)) return false;
   if (token === "i" && !startsUppercase(word)) return false;
   if (token === "i" && (RELATIVE_CLAUSE_ANTECEDENTS.has(previousToken) || TEMPORAL_NOUNS.has(previousToken))) return false;
   if (token === "i") return true;
@@ -1670,7 +2188,7 @@ function isCapitalizedNounPhraseBeforePredicate(words, index, previousToken) {
 function splitLongSrtCues(cues, settings, keepTogetherPhrases) {
   return cues.flatMap((cue) => {
     const text = cleanSubtitleText(cue.text);
-    const sentencePieces = splitTextAtLikelySentenceStarts(text);
+    const sentencePieces = splitTextAtLikelySentenceStarts(text, keepTogetherPhrases);
     if (sentencePieces.length > 1) {
       return splitLongSrtCues(splitTimingAcrossPieces(cue.timing, sentencePieces), settings, keepTogetherPhrases);
     }
@@ -1709,6 +2227,8 @@ function chooseVisualRowEnd(words, startIndex, settings, keepTogetherPhrases) {
   let bestEnd = lastFitEnd;
   let bestScore = Number.POSITIVE_INFINITY;
   for (let index = startIndex; index <= lastFitEnd; index += 1) {
+    if (index < words.length - 1 && wouldBreakProtectedPhraseAt(words.map((word) => ({ text: word })), index, keepTogetherPhrases)) continue;
+    if (index < words.length - 1 && hasDanglingFunctionPhrase(words.slice(startIndex, index + 1), words.slice(index + 1, index + 5))) continue;
     const score = scoreVisualRowBreak(words, startIndex, index, lastFitEnd, settings, keepTogetherPhrases);
     if (score < bestScore) {
       bestScore = score;
@@ -1734,6 +2254,7 @@ function scoreVisualRowBreak(words, startIndex, endIndex, preferredEnd, settings
   if (isNumberTerm(endWord) && UNIT_WORDS.has(nextWord)) score += 1000;
   if (UNIT_WORDS.has(endWord) && isNumberTerm(nextWord)) score += 1000;
   if (hasSplitCapitalizedNounPhraseBeforePredicate(leftWords, rightWords)) score += 1200;
+  if (hasDanglingFunctionPhrase(leftWords, rightWords)) score += 1200;
   if (containsLikelySentenceStartAfterFirst(leftWords)) score += 900;
   if (wouldBreakProtectedPhraseAt(words.map((word) => ({ text: word })), endIndex, keepTogetherPhrases)) score += 1000;
   if (endIndex === startIndex && words.length > 1) score += 500;
@@ -1743,7 +2264,7 @@ function scoreVisualRowBreak(words, startIndex, endIndex, preferredEnd, settings
 
 function formatSrtCues(cues, settings = normalizeSubtitleSettings(defaultSettings.subtitleDefaults)) {
   return cues.map((cue, index) => {
-    const text = wrapSubtitleText(cue.text, settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
+    const text = wrapSubtitleText(formatSubtitleForExport(cue.text), settings.maximumCharactersPerRow, settings.maximumRowsPerCaption);
     return `${index + 1}\n${cue.timing}\n${text}`;
   }).join("\n\n");
 }
@@ -1769,6 +2290,7 @@ function shouldRebalanceSrtPair(current, next) {
   const nextWords = tokenList(next.text);
   if (currentWords.length < 2 || nextWords.length < 1) return false;
   if (isStrongSentenceBoundary(currentWords, nextWords)) return false;
+  if (isStrongCommaClauseBoundary(currentWords, nextWords)) return false;
 
   const endWord = normalizeToken(currentWords[currentWords.length - 1]);
   const startWord = normalizeToken(nextWords[0]);
@@ -1792,6 +2314,14 @@ function isStrongSentenceBoundary(currentWords, nextWords) {
   return isAuxiliary(secondToken)
     || CLAUSE_VERBS.has(secondToken)
     || (startsLowercase(nextWords[1]) && (isAuxiliary(thirdToken) || CLAUSE_VERBS.has(thirdToken)));
+}
+
+function isStrongCommaClauseBoundary(currentWords, nextWords) {
+  const currentLast = currentWords[currentWords.length - 1] || "";
+  if (!/[,:;]$/.test(currentLast)) return false;
+  const first = normalizeToken(nextWords[0] || "");
+  const second = normalizeToken(nextWords[1] || "");
+  return CLAUSE_SUBJECT_STARTS.has(first) && (isAuxiliary(second) || CLAUSE_VERBS.has(second) || isVerbLike(second));
 }
 
 function rebalanceSrtPair(current, next, settings, keepTogetherPhrases) {
@@ -1941,6 +2471,14 @@ function startsUppercase(word) {
 
 function buildKeepTogetherPhrases(payload) {
   const phrases = new Set(defaultSettings.keepTogetherPhrases.map(normalizePhrase));
+  DEFAULT_GLOSSARY_RULES.forEach((rule) => {
+    const replacement = normalizePhrase(rule.replacement);
+    if (replacement && replacement.includes(" ")) phrases.add(replacement);
+  });
+  DEFAULT_KEEP_TOGETHER_PHRASES.forEach((phrase) => {
+    const normalized = normalizePhrase(phrase);
+    if (normalized) phrases.add(normalized);
+  });
   (payload.keepTogetherPhrases || []).forEach((phrase) => {
     const normalized = normalizePhrase(phrase);
     if (normalized) phrases.add(normalized);
@@ -1957,7 +2495,9 @@ function buildKeepTogetherPhrases(payload) {
 }
 
 function normalizePhrase(phrase) {
-  return cleanSubtitleText(phrase).toLowerCase();
+  return cleanSubtitleText(phrase)
+    .replace(/[.!?,;:]+/g, "")
+    .toLowerCase();
 }
 
 function wouldSplitProtectedPhrase(cue, word, nextWord, keepTogetherPhrases) {
@@ -2100,11 +2640,12 @@ function splitSrtAtSentenceBoundaries(srtText) {
       const timing = lines[timingIndex].trim();
       const text = lines.slice(timingIndex + 1).join(" ").trim();
       const pieces = splitTextAtSentenceBoundaries(text);
-      if (pieces.length <= 1) return [{ timing, text }];
+      if (pieces.length <= 1) return [{ timing, text, sentenceEnd: endsSentence(text) }];
 
       return splitTimingAcrossPieces(timing, pieces).map((piece) => ({
         timing: piece.timing,
-        text: piece.text
+        text: piece.text,
+        sentenceEnd: endsSentence(piece.text)
       }));
     });
 }

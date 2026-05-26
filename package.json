@@ -1,13 +1,16 @@
 {
   "name": "subtitle-generator",
   "version": "0.1.8",
-  "description": "Desktop subtitle generator for Premiere workflows using Gladia.",
+  "description": "Desktop subtitle generator for Premiere workflows using local Whisper.",
   "author": "Subtitle Generator Contributors",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
     "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/renderer.js && node tests/srt-rules.test.cjs",
+    "prepare-whisper": "powershell -ExecutionPolicy Bypass -File scripts/prepare-whisper.ps1",
+    "prepack": "npm run prepare-whisper",
     "pack": "electron-builder --dir",
+    "predist": "npm run prepare-whisper",
     "dist": "electron-builder --win"
   },
   "build": {
@@ -28,6 +31,24 @@
       "src/**/*",
       "package.json",
       "README.md"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/whisper",
+        "to": "whisper",
+        "filter": [
+          "bin/Release/whisper-cli.exe",
+          "bin/Release/*.dll",
+          "ggml-base.en.bin"
+        ]
+      },
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "bin/ffmpeg.exe"
+        ]
+      }
     ],
     "win": {
       "signAndEditExecutable": false,

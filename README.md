@@ -1,6 +1,6 @@
 ﻿# Subtitle Generator
 
-Desktop app for creating editable SRT subtitle files from MP4/MOV files using Gladia.
+Desktop app for creating editable SRT subtitle files from audio/video files. It defaults to bundled local Whisper transcription, with Gladia still available as an optional provider.
 
 ## Setup
 
@@ -20,7 +20,7 @@ npm start
 npm run check
 ```
 
-The app stores the Gladia API key and preferences in Electron's user data directory on the local machine.
+The app stores preferences in Electron's user data directory on the local machine. A Gladia API key is only needed when the transcription provider is set to Gladia.
 
 ## Build Installer
 
@@ -30,7 +30,7 @@ Create a local Windows installer:
 npm run dist
 ```
 
-The installer is written to `dist/`.
+The installer is written to `dist/`. The local Whisper model is bundled into the installer, so the installer is much larger than a cloud-only build.
 
 ## Update Prompts
 
@@ -46,12 +46,13 @@ The release tag should match the version in `package.json`, such as `v0.1.1` for
 
 ## Current Features
 
-- Batch MP4/MOV/M4V/audio file queue
-- Gladia v2 upload and pre-recorded transcription flow
+- Batch audio/video file queue with picker and drag-and-drop
+- Free local Whisper transcription through bundled `whisper.cpp`
+- Optional Gladia v2 upload and pre-recorded transcription flow
 - SRT generation with configurable subtitle limits
 - Global custom vocabulary and custom spelling rules
 - Settings screen with saved defaults
-- Output folder selection
+- Windows Save As dialog for SRT export
 - Editable SRT preview before export
 - Per-user local job history with clear history action
 
@@ -72,7 +73,7 @@ npm run check
 npm start
 ```
 
-Each editor needs their own Gladia API key saved in the app settings. API keys are stored locally and should not be committed to GitHub.
+Editors can use Local Whisper without an API key or internet connection after install. Gladia mode still requires each editor to save their own API key in settings. API keys are stored locally and should not be committed to GitHub.
 
 ## Publish a Release
 
@@ -90,4 +91,4 @@ GitHub Actions will build the Windows installer and attach it to a GitHub Releas
 
 ## Notes
 
-Gladia accepts audio and video files through `/v2/upload`, so the first version uploads the editor's MP4/MOV file directly and lets Gladia process the media. A later version can add local FFmpeg extraction if smaller uploads become important.
+Local Whisper is powered by `whisper.cpp` and currently bundles the CPU x64 binary plus the `base.en` model. This keeps transcription free and offline, but the packaged installer is larger and transcription speed depends on the user's computer. The app also bundles FFmpeg for Windows so video inputs such as MP4/MOV/MKV are normalized to temporary MP3 audio before Whisper runs. End users do not need to install Whisper, Python, FFmpeg, or provide an API key when using the local Whisper provider.

@@ -219,6 +219,11 @@ button.danger {
   min-width: 0;
 }
 
+.queue-panel.drop-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(13, 107, 111, 0.14);
+}
+
 .queue-list,
 .history-list,
 .rule-list {

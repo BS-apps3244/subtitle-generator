@@ -146,6 +146,35 @@ function assertNoLeadingCommaWord(srt) {
 }
 
 {
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const punctuationSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "If not, that's a massive red flag. Why wouldn't you show it?",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "It's proof! If a company is outsourcing,"
+  ].join("\n");
+  const updated = applySrtRules(punctuationSrt, settings, ["video file"]);
+  const texts = cueTexts(updated);
+  assertNoPeriods(updated);
+  assert(texts.some((text) => /If not, that's a massive red flag/.test(text)), `Expected middle comma to remain:\n${updated}`);
+  assert(texts.some((text) => /Why wouldn't you show it\?/.test(text)), `Expected question mark to remain:\n${updated}`);
+  assert(texts.some((text) => /It's proof!/.test(text)), `Expected exclamation mark to remain:\n${updated}`);
+  assert(!texts.some((text) => /,$/.test(text)), `Expected captions not to end with commas:\n${updated}`);
+  assert(!texts.some((text) => /red flag Why/.test(text)), `Expected period boundary to become a new cue:\n${updated}`);
+}
+
+{
   const srt = buildSrt("Finding the right video file can make every project easier to review.");
   cueTexts(srt).forEach((text) => {
     assert(!/\bvideo$/.test(text), `Protected phrase split after video: ${text}`);
@@ -804,6 +833,39 @@ function assertNoLeadingCommaWord(srt) {
 }
 
 {
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:24,400 --> 00:00:30,160",
+    "My wife found one thing that actually worked and I almost didn't let her try it.",
+    "",
+    "2",
+    "00:01:54,160 --> 00:02:00,720",
+    "I just wasn't ready to admit it yet. The family she found was based supplies.",
+    "",
+    "3",
+    "00:02:00,720 --> 00:02:06,880",
+    "Parents just like us who started making tallow balm because their own son had eczema. Grass fed tallow from their cattle."
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const texts = cueTexts(updated);
+  assert(texts.some((text) => /My wife found one thing that actually worked/i.test(text)), `Expected optimizer to avoid orphaning found-one phrase:\n${updated}`);
+  assert(!texts.some((text) => /^thing that actually$/i.test(text) || /^worked and$/i.test(text)), `Expected optimizer not to leave micro-cues:\n${updated}`);
+  assert(texts.some((text) => /Based Supplies/.test(text)), `Expected default glossary to fix Based Supplies:\n${updated}`);
+  assert(texts.some((text) => /grass-fed tallow/.test(text)), `Expected default glossary to fix grass-fed tallow:\n${updated}`);
+  assertMaxCueCharacters(updated, settings.maximum_characters_per_row);
+}
+
+{
   const scriptSettings = {
     ...defaultSettings.subtitleDefaults,
     maximum_characters_per_row: 45,
@@ -855,6 +917,243 @@ function assertNoLeadingCommaWord(srt) {
   assert(!texts.some((text) => /^The first night$/i.test(text)), `Full script should not leave temporal opener alone:\n${srt}`);
   assert(!texts.some((text) => /\bdidn't For\b/.test(text)), `Full script should split before temporal sentence opener:\n${srt}`);
   assert(!texts.some((text) => /\bclicked Beef\b/.test(text)), `Full script should split before capitalized noun phrase sentence:\n${srt}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:04,000",
+    "So many questions about how do I know what's a good tallow brand to order from?",
+    "",
+    "2",
+    "00:00:04,000 --> 00:00:08,000",
+    "Number one are they showing you behind the scenes of them actually making the product?"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const texts = cueTexts(updated);
+  assert(!texts.some((text) => /\bhow do$/i.test(text)), `Optimizer should not end on dangling question helper phrase:\n${updated}`);
+  assert(!texts.some((text) => /\bbehind the$/i.test(text)), `Optimizer should not end on preposition plus determiner:\n${updated}`);
+  assertMaxCueCharacters(updated, settings.maximum_characters_per_row);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:05,000",
+    "I love hearing that Back in the day I always had big hair.",
+    "",
+    "2",
+    "00:00:05,000 --> 00:00:10,000",
+    "All natural, no sulfates, no parabens, nothing like that It's made with onion, hydrosol."
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const texts = cueTexts(updated);
+  const text = texts.join(" ");
+  assert(!texts.some((cue) => /\bthat Back\b/.test(cue)), `Expected split before capitalized temporal opener after that:\n${updated}`);
+  assert(!texts.some((cue) => /\bthat It's\b/.test(cue)), `Expected split before capitalized contraction sentence after that:\n${updated}`);
+  assert(texts.some((cue) => /^Back in the day\b/.test(cue)), `Expected Back sentence to start its own cue:\n${updated}`);
+  assert(texts.some((cue) => /^It's made\b/.test(cue)), `Expected It's sentence to start its own cue:\n${updated}`);
+  assert(/onion hydrosol/.test(text), `Expected onion hydrosol glossary normalization:\n${updated}`);
+  assert(!/onion, hydrosol/.test(text), `Expected onion, hydrosol comma to be removed:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "So there I was mining my own business in the grocery store.",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "She was like, wait, onion? Does it your hair smell like onions?"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" ");
+  assert(/minding my own business/.test(text), `Expected idiom correction for minding my own business:\n${updated}`);
+  assert(!/mining my own business/.test(text), `Expected mining transcription error to be corrected:\n${updated}`);
+  assert(/Does your hair smell like onions\?/.test(text), `Expected ungrammatical does-it-your phrase to be corrected:\n${updated}`);
+  assert(!/Does it your/.test(text), `Expected does it your transcription error to be corrected:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:04,000",
+    "The closest thing is tallow and honey bomb by Baste Supplies.",
+    "",
+    "2",
+    "00:00:04,000 --> 00:00:08,000",
+    "The Tallow Balm is made by Face Supplies with grass-fed beef, tallow and grain, fed cattle.",
+    "",
+    "3",
+    "00:00:08,000 --> 00:00:12,000",
+    "Try onion, hydrosoil shampoo with sulfur-rich, formula.",
+    "",
+    "4",
+    "00:00:12,000 --> 00:00:16,000",
+    "And once you hit back, when you carry",
+    "",
+    "5",
+    "00:00:16,000 --> 00:00:20,000",
+    "menopause and menopause, that drop speeds up."
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" ");
+  assert(/Tallow and Honey Balm/.test(text), `Expected product balm correction:\n${updated}`);
+  assert(/Based Supplies/.test(text), `Expected Based Supplies correction:\n${updated}`);
+  assert(/grass-fed beef tallow/.test(text), `Expected beef tallow comma cleanup:\n${updated}`);
+  assert(/grain-fed cattle/.test(text), `Expected grain-fed comma cleanup:\n${updated}`);
+  assert(/onion hydrosol shampoo/.test(text), `Expected hydrosol correction:\n${updated}`);
+  assert(/sulfur-rich formula/.test(text), `Expected sulfur-rich formula comma cleanup:\n${updated}`);
+  assert(/hit perimenopause/.test(text), `Expected split menopause correction:\n${updated}`);
+  assert(!/hit back|carry menopause|menopause and menopause/.test(text), `Expected bad menopause phrase removed:\n${updated}`);
+  assert(!/\b(?:Baste|Face) Supplies\b/.test(text), `Expected bad Based Supplies variants removed:\n${updated}`);
+  assert(!/\b[Bb]omb\b/.test(text), `Expected bomb product typo removed:\n${updated}`);
+  assert(!/hydrosoil/.test(text), `Expected hydrosoil typo removed:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:04,000",
+    "I stopped using retinol 90 days ago where dermatologists can't believe what my skin looks like now.",
+    "",
+    "2",
+    "00:00:04,000 --> 00:00:08,000",
+    "Retinol is a synthetic form of vitamin A, so when you put it on your skin, your skin treats it like an attack.",
+    "",
+    "3",
+    "00:00:08,000 --> 00:00:12,000",
+    "I threw up the gentle cleanser. In my week three, the redness was gone.",
+    "",
+    "4",
+    "00:00:12,000 --> 00:00:16,000",
+    "Three weeks with this bomb and my skin looks better. It's what you've been washing it with Because here's what I believed."
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const texts = cueTexts(updated);
+  const text = texts.join(" ");
+  assert(/my dermatologist can't believe/.test(text), `Expected dermatologist correction:\n${updated}`);
+  assert(/vitamin A/.test(text), `Expected vitamin A to stay together:\n${updated}`);
+  assert(!texts.some((cue) => /^A so\b/.test(cue)), `Expected no stranded vitamin A cue:\n${updated}`);
+  assert(/threw out the gentle cleanser/.test(text), `Expected threw out correction:\n${updated}`);
+  assert(/By week three/.test(text), `Expected By week three correction:\n${updated}`);
+  assert(/this balm/.test(text), `Expected this balm correction:\n${updated}`);
+  assert(!texts.some((cue) => /\bwith Because\b/.test(cue)), `Expected capitalized Because to start a new cue:\n${updated}`);
+  assert(texts.some((cue) => /^Because here's what/.test(cue)), `Expected Because sentence start cue:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:01:35,017 --> 00:01:38,998",
+    "It's proof Why would you hide that Now here's why this matters for your skin"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const texts = cueTexts(updated);
+  assert(!texts.some((text) => /\bthat Now\b/.test(text)), `Optimizer should split before capitalized discourse sentence starts:\n${updated}`);
+  assert(texts.some((text) => /^Now here's why/i.test(text)), `Expected Now sentence to start its own cue:\n${updated}`);
+  assertMaxCueCharacters(updated, settings.maximum_characters_per_row);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:04,000",
+    "So you want to know if the Tallow Company is legit or if this Tallow brand is real.",
+    "",
+    "2",
+    "00:00:04,000 --> 00:00:08,000",
+    "With tallow and honey balm from base supplies, you get Grass Fed Suet Fat, Trim Fat, Raw Honey and Olive Oil from drop shipping."
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" ");
+  assert(!/\bTallow Company\b/.test(text), `Generic tallow company should be lowercased:\n${updated}`);
+  assert(!/\bTallow brand\b/.test(text), `Generic tallow brand should be lowercased:\n${updated}`);
+  assert(!/\bSuet Fat\b/.test(text), `Generic suet fat should be lowercased:\n${updated}`);
+  assert(!/\bTrim Fat\b/.test(text), `Generic trim fat should be lowercased:\n${updated}`);
+  assert(!/\bRaw Honey\b/.test(text), `Generic raw honey should be lowercased:\n${updated}`);
+  assert(!/\bOlive Oil\b/.test(text), `Generic olive oil should be lowercased:\n${updated}`);
+  assert(/\btallow company\b/.test(text), `Expected lowercase tallow company:\n${updated}`);
+  assert(/\btallow brand\b/.test(text), `Expected lowercase tallow brand:\n${updated}`);
+  assert(/\bsuet fat\b/.test(text), `Expected lowercase suet fat:\n${updated}`);
+  assert(/\btrim fat\b/.test(text), `Expected lowercase trim fat:\n${updated}`);
+  assert(/\braw honey\b/.test(text), `Expected lowercase raw honey:\n${updated}`);
+  assert(/\bolive oil\b/.test(text), `Expected lowercase olive oil:\n${updated}`);
+  assert(/\bdropshipping\b/.test(text), `Expected dropshipping glossary normalization:\n${updated}`);
+  assert(/Tallow and Honey Balm/.test(text), `Branded product phrase should remain capitalized:\n${updated}`);
+  assert(/Based Supplies/.test(text), `Brand phrase should remain capitalized:\n${updated}`);
+  assert(/grass-fed suet fat/.test(text), `Glossary should still apply after casing normalization:\n${updated}`);
 }
 
 console.log("SRT rule tests passed");
