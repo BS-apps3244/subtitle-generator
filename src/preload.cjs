@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("subtitleApp", {
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   pickInputs: () => ipcRenderer.invoke("files:pick-inputs"),
+  pickReferencePdf: () => ipcRenderer.invoke("files:pick-reference-pdf"),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   pickOutputFolder: () => ipcRenderer.invoke("folders:pick-output"),
   transcribe: (payload) => ipcRenderer.invoke("gladia:transcribe", payload),

@@ -211,6 +211,10 @@ button.danger {
   gap: 18px;
 }
 
+.script-panel {
+  grid-column: 1;
+}
+
 .panel {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -267,15 +271,17 @@ button.danger {
 }
 
 .editor-panel {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   min-height: calc(100vh - 152px);
   display: flex;
   flex-direction: column;
 }
 
-#srt-editor {
+#srt-editor,
+#reference-script {
   flex: 1;
   width: 100%;
-  min-height: 500px;
   margin-top: 16px;
   resize: none;
   border: 1px solid var(--line);
@@ -285,6 +291,14 @@ button.danger {
   color: var(--ink);
   line-height: 1.45;
   font-family: Consolas, "Courier New", monospace;
+}
+
+#srt-editor {
+  min-height: 500px;
+}
+
+#reference-script {
+  min-height: 220px;
 }
 
 .status-line {
@@ -370,5 +384,11 @@ button.danger {
   .two-column,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .script-panel,
+  .editor-panel {
+    grid-column: auto;
+    grid-row: auto;
   }
 }

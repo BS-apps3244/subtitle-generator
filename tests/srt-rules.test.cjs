@@ -618,7 +618,7 @@ function assertNoLeadingCommaWord(srt) {
   const updated = applySrtRules(capitalizedNounPhraseSrt, settings, []);
   const texts = cueTexts(updated);
   assert(!texts.some((text) => /\bclicked Beef\b/.test(text)), `Expected capitalized noun phrase before predicate to start a new cue:\n${updated}`);
-  assert(texts.some((text) => /^Beef tallow is\b/.test(text)), `Expected noun phrase sentence to start its own cue:\n${updated}`);
+  assert(texts.some((text) => /^beef tallow is\b/.test(text)), `Expected noun phrase sentence to start its own cue:\n${updated}`);
   assertMaxCueCharacters(updated, settings.maximum_characters_per_row);
 }
 
@@ -1105,6 +1105,303 @@ function assertNoLeadingCommaWord(srt) {
   };
   const rawWhisperSrt = [
     "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "And it's always at a set price, which is a good price",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "but if you purchase both, you get a nice little discount as well as sheeping",
+    "",
+    "3",
+    "00:00:06,000 --> 00:00:09,000",
+    "So click the link below right here and see how much you get yours for"
+  ].join("\n");
+  const referenceScript = [
+    "And it's always at a set price, which is a good price,",
+    "but if you purchase both, you get a nice little discount as well as shipping.",
+    "So click the link below right here and see how much you get yours for."
+  ].join(" ");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript, {
+    cueConfidence: [0.95, 0.42, 0.95]
+  });
+  const text = cueTexts(updated).join(" ");
+  assert(/shipping/.test(text), `Expected reference script to correct close same-length Whisper miss:\n${updated}`);
+  assert(!/sheeping/.test(text), `Expected bad Whisper word to be replaced from script:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "This transcript is about a totally different product"
+  ].join("\n");
+  const referenceScript = "Egyptian queens used grass-fed tallow for their skin";
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript);
+  const text = cueTexts(updated).join(" ");
+  assert(/totally different product/.test(text), `Unrelated reference script should not overwrite transcript:\n${updated}`);
+  assert(!/Egyptian queens/.test(text), `Unrelated reference script leaked into SRT:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "My son used to beg me not to put his eczema cream on",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "He said it felt like fire"
+  ].join("\n");
+  const referenceScript = [
+    "Script line",
+    "Hook 2: My son used to beg me not to put his eczema cream on.",
+    "He said it felt like fire.",
+    "1: Two years. That's how long we spent in the dermatologist cycle."
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript);
+  const text = cueTexts(updated).join(" ");
+  assert(!/Script line|Hook 2:|^1:/im.test(text), `Reference script labels should not leak into SRT:\n${updated}`);
+  assert(/My son used to beg me/.test(text), `Expected actual script text to remain after label cleanup:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "I like this balm because it feels light"
+  ].join("\n");
+  const referenceScript = "I love this balm because it feels rich";
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript, {
+    cueConfidence: [0.94]
+  });
+  const text = cueTexts(updated).join(" ");
+  assert(/I like this balm/.test(text), `High-confidence ad-lib should not be overwritten by nearby script:\n${updated}`);
+  assert(!/feels rich/.test(text), `High-confidence transcript should keep actor wording:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "I like this bomb because it feels light"
+  ].join("\n");
+  const referenceScript = "I like this balm because it feels light";
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript, {
+    cueConfidence: [0.52]
+  });
+  const text = cueTexts(updated).join(" ");
+  assert(/this balm/.test(text), `Low-confidence close match should use the script correction:\n${updated}`);
+  assert(!/this bomb/.test(text), `Low-confidence Whisper miss should be replaced:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "My son used to beg me not to put his eggs in my cream on"
+  ].join("\n");
+  const referenceScript = "My son used to beg me not to put his eczema cream on";
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript, {
+    cueConfidence: [0.93]
+  });
+  const text = cueTexts(updated).join(" ");
+  assert(/his eczema cream on/.test(text), `Script anchors should fix unsupported phonetic phrase even at high confidence:\n${updated}`);
+  assert(!/eggs in my/.test(text), `Unsupported phrase should not survive when anchored script match is clear:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "He'd say please mommy not tonight"
+  ].join("\n");
+  const referenceScript = "He'd say please not tonight mommy";
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, [], referenceScript, {
+    cueConfidence: [0.42]
+  });
+  const text = cueTexts(updated).join(" ");
+  assert(/please mommy not tonight/.test(text), `Script assist should not reorder actor delivery:\n${updated}`);
+  assert(!/please not tonight mommy/.test(text), `Same-word script order should not overwrite transcript:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:04,000",
+    "And I'd do it anyway because the doctor said I had to One night he was screaming so hard"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" | ");
+  assert(/I had to\s*\|\s*One night he was screaming/.test(text), `Expected temporal sentence start to split after had to:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "cycle New appointment, new cream, same result",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "his birthday Day 3, the patches stopped spreading Day 5, he asked me",
+    "",
+    "3",
+    "00:00:06,000 --> 00:00:09,000",
+    "same way Same grass-fed tallow from their cattle",
+    "",
+    "4",
+    "00:00:09,000 --> 00:00:12,000",
+    "problem we all have If you're where I was",
+    "",
+    "5",
+    "00:00:12,000 --> 00:00:15,000",
+    "New appointment, new cream, same result Every single one would sting",
+    "",
+    "6",
+    "00:00:15,000 --> 00:00:18,000",
+    "No chemicals Just a farm family who figured it out",
+    "",
+    "7",
+    "00:00:18,000 --> 00:00:21,000",
+    "I'd lost it Beef fat on our son"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" | ");
+  assert(/cycle\s*\|\s*New appointment/.test(text), `Expected New appointment to start a new subtitle:\n${updated}`);
+  assert(/birthday\s*\|\s*Day 3/.test(text), `Expected Day 3 to start a new subtitle:\n${updated}`);
+  assert(/stopped spreading\s*\|\s*Day 5/.test(text), `Expected Day 5 to start a new subtitle:\n${updated}`);
+  assert(/same way\s*\|\s*Same grass-fed tallow/.test(text), `Expected Same grass-fed to start a new subtitle:\n${updated}`);
+  assert(/we all have\s*\|\s*If you're where/.test(text), `Expected If to start a new subtitle after complete clause:\n${updated}`);
+  assert(/same result\s*\|\s*Every single one/.test(text), `Expected Every to start a new subtitle:\n${updated}`);
+  assert(/No chemicals\s*\|\s*Just a farm family/.test(text), `Expected Just to start a new subtitle:\n${updated}`);
+  assert(/I'd lost it\s*\|\s*beef fat on our son/i.test(text), `Expected Beef fat fragment to start a new subtitle:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "No chemicals just a farm family who figured out what dermatologists could it",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "New skin growing, weather had been scaled and bleeding",
+    "",
+    "3",
+    "00:00:06,000 --> 00:00:09,000",
+    "She tried tele first after XMS in birth"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(rawWhisperSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" ");
+  assert(/dermatologists couldn't/.test(text), `Expected common Whisper miss to become couldn't:\n${updated}`);
+  assert(/where there had been/.test(text), `Expected weather/where there miss to be corrected:\n${updated}`);
+  assert(/tallow first/.test(text), `Expected tele to become tallow:\n${updated}`);
+  assert(/eczema since birth/.test(text), `Expected XMS in birth to become eczema since birth:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const rawWhisperSrt = [
+    "1",
     "00:01:35,017 --> 00:01:38,998",
     "It's proof Why would you hide that Now here's why this matters for your skin"
   ].join("\n");
@@ -1154,6 +1451,86 @@ function assertNoLeadingCommaWord(srt) {
   assert(/Tallow and Honey Balm/.test(text), `Branded product phrase should remain capitalized:\n${updated}`);
   assert(/Based Supplies/.test(text), `Brand phrase should remain capitalized:\n${updated}`);
   assert(/grass-fed suet fat/.test(text), `Glossary should still apply after casing normalization:\n${updated}`);
+}
+
+{
+  const settings = {
+    ...defaultSettings.subtitleDefaults,
+    maximum_characters_per_row: 45,
+    maximum_rows_per_caption: 1,
+    minimum_duration: 1,
+    target_duration: 1.2,
+    maximum_duration: 3,
+    caption_gap: 0
+  };
+  const elevenLabsSrt = [
+    "1",
+    "00:00:00,000 --> 00:00:03,000",
+    "What raw honey does to eczema in thirty days Day one",
+    "",
+    "2",
+    "00:00:03,000 --> 00:00:06,000",
+    "The inflammation calms down For most children this matters",
+    "",
+    "3",
+    "00:00:06,000 --> 00:00:09,000",
+    "The cream forces the inflammation down temporarily The skin thins out",
+    "",
+    "4",
+    "00:00:09,000 --> 00:00:12,000",
+    "Botox just paralyzes the muscles temporarily The lines come back",
+    "",
+    "5",
+    "00:00:12,000 --> 00:00:15,000",
+    "The family who makes this Based Supplies they still make it",
+    "",
+    "6",
+    "00:00:15,000 --> 00:00:18,000",
+    "You'll see results in thirty days By week two the redness calms",
+    "",
+    "7",
+    "00:00:18,000 --> 00:00:21,000",
+    "I looked like this My skin had less bounce",
+    "",
+    "8",
+    "00:00:21,000 --> 00:00:24,000",
+    "I looked in the mirror and thought \"I look frozen\"",
+    "",
+    "9",
+    "00:00:24,000 --> 00:00:27,000",
+    "I was up at 2: 00 AM checking every forum",
+    "",
+    "10",
+    "00:00:27,000 --> 00:00:30,000",
+    "This is what started Base",
+    "",
+    "11",
+    "00:00:30,000 --> 00:00:33,000",
+    "Supplies and our tallow & Honey",
+    "",
+    "12",
+    "00:00:33,000 --> 00:00:36,000",
+    "Balm is back in stock",
+    "",
+    "13",
+    "00:00:36,000 --> 00:00:39,000",
+    "I permed it This is me in high school That used to be normal"
+  ].join("\n");
+  const keepTogetherPhrases = buildKeepTogetherPhrases({ vocabulary: [], spellingRules: [] });
+  const updated = applySrtRules(elevenLabsSrt, settings, keepTogetherPhrases, []);
+  const text = cueTexts(updated).join(" | ");
+  assert(/thirty days\s*\|\s*Day one/.test(text), `Expected Day opener to split after complete phrase:\n${updated}`);
+  assert(/calms down\s*\|\s*For most children/.test(text), `Expected For opener to split after complete phrase:\n${updated}`);
+  assert(/temporarily\s*\|\s*The skin thins out/.test(text), `Expected The opener to split after complete phrase:\n${updated}`);
+  assert(/temporarily\s*\|\s*The lines come back/.test(text), `Expected The opener after Botox clause:\n${updated}`);
+  assert(/this\s*\|\s*Based Supplies/.test(text), `Expected brand sentence start to split cleanly:\n${updated}`);
+  assert(/thirty days\s*\|\s*By week two/.test(text), `Expected By opener to split after complete phrase:\n${updated}`);
+  assert(/like this\s*\|\s*My skin/.test(text), `Expected trailing My sentence start to move to the next cue:\n${updated}`);
+  assert(!text.includes('"'), `Expected quote marks to be removed from export text:\n${updated}`);
+  assert(/2:00 AM/.test(text), `Expected spaced clock time to be normalized:\n${updated}`);
+  assert(/Based Supplies/.test(text), `Expected split Base Supplies to merge and normalize:\n${updated}`);
+  assert(/tallow\s*&\s*Honey Balm/i.test(text), `Expected tallow & Honey Balm to stay together:\n${updated}`);
+  assert(/high school\s*\|\s*That used/.test(text), `Expected That sentence start to split after complete phrase:\n${updated}`);
 }
 
 console.log("SRT rule tests passed");

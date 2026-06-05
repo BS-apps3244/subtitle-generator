@@ -23,7 +23,7 @@
       <aside class="sidebar">
         <div>
           <h1>Subtitle Generator</h1>
-          <p>Gladia-powered SRT creation for Premiere workflows.</p>
+          <p>SRT creation for Premiere workflows.</p>
           <div id="app-version" class="app-version">Version</div>
         </div>
         <nav class="nav-tabs" aria-label="Sections">
@@ -39,7 +39,7 @@
           <header class="view-header">
             <div>
               <h2>Subtitle Jobs</h2>
-              <p>Batch process MP4/MOV files, review the generated SRT, then export.</p>
+              <p>Batch process audio/video files, optionally guide recognition with a script, then export.</p>
             </div>
             <div class="toolbar">
               <button id="add-files">Add Files</button>
@@ -54,6 +54,14 @@
                 <button id="clear-queue" class="ghost">Clear</button>
               </div>
               <div id="queue-list" class="queue-list empty">No files added yet.</div>
+            </section>
+
+            <section class="panel script-panel">
+              <div class="panel-header">
+                <h3>Reference Script</h3>
+                <button id="load-script-pdf" type="button">Load PDF</button>
+              </div>
+              <textarea id="reference-script" spellcheck="true" placeholder="Optional: paste the script here before starting the batch. The app will use it to correct close Whisper misses while keeping Whisper timings."></textarea>
             </section>
 
             <section class="panel editor-panel">
@@ -113,14 +121,22 @@
 
           <section class="panel settings-grid">
             <label class="field wide">
-              Gladia API key
-              <input id="api-key" type="password" autocomplete="off" placeholder="Paste API key locally" />
+              Transcription API key
+              <input id="api-key" type="password" autocomplete="off" placeholder="Paste ElevenLabs or Gladia API key locally" />
             </label>
             <label class="field wide">
               Transcription provider
               <select id="transcription-provider">
+                <option value="elevenlabs">ElevenLabs Scribe v2</option>
                 <option value="local-whisper">Local Whisper</option>
                 <option value="gladia">Gladia</option>
+              </select>
+            </label>
+            <label class="field wide">
+              Local Whisper model
+              <select id="whisper-model">
+                <option value="base.en">Base English (bundled, fastest)</option>
+                <option value="medium.en">Medium English (downloads on first use, balanced accuracy)</option>
               </select>
             </label>
             <label class="field output-field">

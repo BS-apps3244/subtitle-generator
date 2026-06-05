@@ -67,6 +67,7 @@ function bindJobs() {
   $("#start-batch").addEventListener("click", startBatch);
   $("#apply-rules").addEventListener("click", applyRulesToEditor);
   $("#save-srt").addEventListener("click", saveSelectedSrt);
+  $("#load-script-pdf").addEventListener("click", loadReferencePdf);
 }
 
 function bindFileDrops() {
@@ -258,6 +259,7 @@ function updateInstallProgress(event) {
 function hydrateSettings() {
   $("#api-key").value = state.settings.apiKey || "";
   $("#transcription-provider").value = state.settings.transcriptionProvider || "local-whisper";
+  $("#whisper-model").value = state.settings.whisperModel || "base.en";
   $("#output-folder").value = state.settings.outputFolder || "";
   $("#max-chars").value = state.settings.subtitleDefaults.maximum_characters_per_row;
   $("#max-rows").value = state.settings.subtitleDefaults.maximum_rows_per_caption;
@@ -276,6 +278,7 @@ function collectSettings() {
     ...state.settings,
     apiKey: $("#api-key").value.trim(),
     transcriptionProvider: $("#transcription-provider").value,
+    whisperModel: $("#whisper-model").value,
     outputFolder: $("#output-folder").value.trim(),
     subtitleDefaults: {
       maximum_characters_per_row: Number($("#max-chars").value || 45),
@@ -340,7 +343,8 @@ async function startBatch() {
     try {
       const result = await window.subtitleApp.transcribe({
         ...state.settings,
-        filePath: item.filePath
+        filePath: item.filePath,
+        referenceScript: $("#reference-script").value.trim()
       });
       state.completed.set(item.filePath, result.srtText);
       item.status = "done";
@@ -372,17 +376,29 @@ async function saveSelectedSrt() {
   setStatus(`Saved ${outputPath}`);
 }
 
+async function loadReferencePdf() {
+  try {
+    const text = await window.subtitleApp.pickReferencePdf();
+    if (!text) return;
+    $("#reference-script").value = text;
+    setStatus("Loaded reference script from PDF.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 async function applyRulesToEditor() {
   state.settings = collectSettings();
   state.settings = await window.subtitleApp.saveSettings(state.settings);
   const updated = await window.subtitleApp.applyRules({
     ...state.settings,
     filePath: state.selectedFilePath,
-    srtText: $("#srt-editor").value
+    srtText: $("#srt-editor").value,
+    referenceScript: $("#reference-script").value.trim()
   });
   $("#srt-editor").value = updated;
   if (state.selectedFilePath) state.completed.set(state.selectedFilePath, updated);
-  setStatus("Rules applied to current SRT text without calling Gladia.");
+  setStatus("Rules applied to current SRT text without calling the transcription service.");
 }
 
 function selectFile(filePath) {

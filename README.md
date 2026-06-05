@@ -1,6 +1,6 @@
 ﻿# Subtitle Generator
 
-Desktop app for creating editable SRT subtitle files from audio/video files. It defaults to bundled local Whisper transcription, with Gladia still available as an optional provider.
+Desktop app for creating editable SRT subtitle files from audio/video files. It defaults to ElevenLabs Scribe v2 transcription, with bundled local Whisper and Gladia still available as optional providers.
 
 ## Setup
 
@@ -20,7 +20,7 @@ npm start
 npm run check
 ```
 
-The app stores preferences in Electron's user data directory on the local machine. A Gladia API key is only needed when the transcription provider is set to Gladia.
+The app stores preferences in Electron's user data directory on the local machine. An API key is needed when the transcription provider is set to ElevenLabs or Gladia.
 
 ## Build Installer
 
@@ -47,7 +47,9 @@ The release tag should match the version in `package.json`, such as `v0.1.1` for
 ## Current Features
 
 - Batch audio/video file queue with picker and drag-and-drop
+- ElevenLabs Scribe v2 transcription with word-level timestamps
 - Free local Whisper transcription through bundled `whisper.cpp`
+- Optional reference script assist that aligns Whisper output to a pasted script or selectable-text PDF and fixes close recognition misses while preserving subtitle timing
 - Optional Gladia v2 upload and pre-recorded transcription flow
 - SRT generation with configurable subtitle limits
 - Global custom vocabulary and custom spelling rules
@@ -73,7 +75,7 @@ npm run check
 npm start
 ```
 
-Editors can use Local Whisper without an API key or internet connection after install. Gladia mode still requires each editor to save their own API key in settings. API keys are stored locally and should not be committed to GitHub.
+Editors can use Local Whisper without an API key or internet connection after install. ElevenLabs and Gladia modes require each editor to save their own API key in settings. API keys are stored locally and should not be committed to GitHub.
 
 ## Publish a Release
 
@@ -91,4 +93,4 @@ GitHub Actions will build the Windows installer and attach it to a GitHub Releas
 
 ## Notes
 
-Local Whisper is powered by `whisper.cpp` and currently bundles the CPU x64 binary plus the `base.en` model. This keeps transcription free and offline, but the packaged installer is larger and transcription speed depends on the user's computer. The app also bundles FFmpeg for Windows so video inputs such as MP4/MOV/MKV are normalized to temporary MP3 audio before Whisper runs. End users do not need to install Whisper, Python, FFmpeg, or provide an API key when using the local Whisper provider.
+ElevenLabs mode uploads the selected audio/video file directly to ElevenLabs, requests Scribe v2 word timestamps, then runs the app's own subtitle builder and QA rules. Local Whisper is powered by `whisper.cpp` and currently bundles the CPU x64 binary plus the `base.en` model. This keeps transcription free and offline, but the packaged installer is larger and transcription speed depends on the user's computer. The app also bundles FFmpeg for Windows so video inputs such as MP4/MOV/MKV are normalized to temporary MP3 audio before Whisper runs. End users do not need to install Whisper, Python, FFmpeg, or provide an API key when using the local Whisper provider.

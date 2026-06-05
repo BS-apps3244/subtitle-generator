@@ -14,12 +14,26 @@ if (process.versions.electron) {
 }
 
 const GLADIA_BASE_URL = "https://api.gladia.io/v2";
+const ELEVENLABS_STT_URL = "https://api.elevenlabs.io/v1/speech-to-text";
 const RELEASES_API_URL = "https://api.github.com/repos/BS-apps3244/subtitle-generator/releases/latest";
 const RELEASES_PAGE_URL = "https://github.com/BS-apps3244/subtitle-generator/releases/latest";
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLL_ATTEMPTS = 450;
 const MAX_SRT_REPAIR_PASSES = 8;
-const LOCAL_WHISPER_MODEL_FILE = "ggml-base.en.bin";
+const DEFAULT_WHISPER_MODEL = "base.en";
+const WHISPER_MODELS = {
+  "base.en": {
+    label: "Base English",
+    fileName: "ggml-base.en.bin",
+    bundled: true
+  },
+  "medium.en": {
+    label: "Medium English",
+    fileName: "ggml-medium.en.bin",
+    bundled: false,
+    url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin"
+  }
+};
 const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "aac", "m4a", "flac", "ogg", "oga", "opus", "wma", "aiff", "aif", "amr"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mpeg", "mpg", "mpe", "mov", "m4v", "avi", "wmv", "webm", "mkv", "flv", "3gp", "3g2"]);
 const DEFAULT_GLOSSARY_RULES = [
@@ -29,9 +43,15 @@ const DEFAULT_GLOSSARY_RULES = [
   { original: "face supplies", replacement: "Based Supplies" },
   { original: "tallow and honey balm", replacement: "Tallow and Honey Balm" },
   { original: "tallow and honey bomb", replacement: "Tallow and Honey Balm" },
+  { original: "beef tello", replacement: "beef tallow" },
+  { original: "tello", replacement: "tallow" },
+  { original: "tele", replacement: "tallow" },
   { original: "beef tallow bomb", replacement: "beef tallow balm" },
   { original: "the bomb", replacement: "the balm" },
   { original: "this bomb", replacement: "this balm" },
+  { original: "xms", replacement: "eczema" },
+  { original: "exma", replacement: "eczema" },
+  { original: "eczema in birth", replacement: "eczema since birth" },
   { original: "grass fed", replacement: "grass-fed" },
   { original: "grain, fed", replacement: "grain-fed" },
   { original: "drop shipping", replacement: "dropshipping" },
@@ -45,6 +65,8 @@ const DEFAULT_GLOSSARY_RULES = [
   { original: "hit back when you carry", replacement: "hit perimenopause and" },
   { original: "menopause and menopause", replacement: "menopause" },
   { original: "where dermatologists can't", replacement: "my dermatologist can't" },
+  { original: "dermatologists could it", replacement: "dermatologists couldn't" },
+  { original: "skin growing, weather had been", replacement: "skin growing where there had been" },
   { original: "threw up the gentle cleanser", replacement: "threw out the gentle cleanser" },
   { original: "in my week three", replacement: "by week three" },
   { original: "does it your", replacement: "does your" },
@@ -52,6 +74,11 @@ const DEFAULT_GLOSSARY_RULES = [
   { original: "trim-fat", replacement: "trim fat" }
 ];
 const DEFAULT_KEEP_TOGETHER_PHRASES = [
+  "Based Supplies",
+  "Base Supplies",
+  "Tallow and Honey Balm",
+  "tallow & honey balm",
+  "tallow honey balm",
   "beef tallow",
   "raw honey",
   "olive oil",
@@ -94,8 +121,10 @@ const AUXILIARY_VERBS = new Set([
   "does", "did"
 ]);
 const NEGATIONS = new Set(["not", "no"]);
-const TEMPORAL_SENTENCE_STARTS = new Set(["after", "back", "before", "first", "finally", "for", "today"]);
+const TEMPORAL_SENTENCE_STARTS = new Set(["after", "back", "before", "by", "first", "finally", "for", "today"]);
 const TEMPORAL_NOUNS = new Set(["night", "morning", "afternoon", "evening", "day", "week", "month", "year", "time"]);
+const CAPITALIZED_SEQUENCE_STARTS = new Set(["Because", "By", "Day", "Every", "For", "New", "Same", "Worst"]);
+const CAPITALIZED_FRAGMENT_STARTS = new Set(["Based", "Beef", "Botox", "It", "Just", "My", "No", "That", "The", "This", "You"]);
 const DEGREE_MODIFIERS = new Set(["very", "more", "most"]);
 const POSSESSIVE_DETERMINERS = new Set(["my", "your", "his", "her", "its", "our", "their"]);
 const DEMONSTRATIVE_DETERMINERS = new Set(["this", "these", "that", "those"]);
@@ -157,7 +186,8 @@ let autoUpdaterConfigured = false;
 
 const defaultSettings = {
   apiKey: "",
-  transcriptionProvider: "local-whisper",
+  transcriptionProvider: "elevenlabs",
+  whisperModel: DEFAULT_WHISPER_MODEL,
   outputFolder: "",
   subtitleDefaults: {
     minimum_duration: 1,
@@ -194,9 +224,12 @@ function readSettings() {
 }
 
 function mergeSettings(settings) {
+  const requestedWhisperModel = ["large-v3", "large-v3-q5_0"].includes(settings.whisperModel) ? "medium.en" : settings.whisperModel;
+  const whisperModel = WHISPER_MODELS[requestedWhisperModel] ? requestedWhisperModel : DEFAULT_WHISPER_MODEL;
   return {
     ...defaultSettings,
     ...settings,
+    whisperModel,
     subtitleDefaults: {
       ...defaultSettings.subtitleDefaults,
       ...(settings.subtitleDefaults || {})
@@ -427,6 +460,19 @@ ipcMain.handle("files:pick-inputs", async () => {
   return result.canceled ? [] : result.filePaths;
 });
 
+ipcMain.handle("files:pick-reference-pdf", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose reference script PDF",
+    properties: ["openFile"],
+    filters: [
+      { name: "PDF", extensions: ["pdf"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
+  });
+  if (result.canceled || !result.filePaths[0]) return "";
+  return extractPdfText(result.filePaths[0]);
+});
+
 ipcMain.handle("folders:pick-output", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Choose output folder",
@@ -461,7 +507,8 @@ ipcMain.handle("srt:apply-rules", (_event, payload) => {
     payload.srtText || "",
     payload.subtitleDefaults || defaultSettings.subtitleDefaults,
     keepTogetherPhrases,
-    payload.spellingRules || []
+    payload.spellingRules || [],
+    payload.referenceScript || ""
   );
   if (payload.filePath) upsertHistorySrt(payload.filePath, updated);
   return updated;
@@ -487,9 +534,13 @@ ipcMain.handle("history:load-srt", (_event, historyId) => {
 
 ipcMain.handle("gladia:transcribe", async (_event, payload) => {
   const settings = readSettings();
-  const provider = payload.transcriptionProvider || settings.transcriptionProvider || "local-whisper";
+  const provider = payload.transcriptionProvider || settings.transcriptionProvider || defaultSettings.transcriptionProvider;
   if (provider === "local-whisper") {
     return transcribeWithLocalWhisper(payload, settings);
+  }
+
+  if (provider === "elevenlabs") {
+    return transcribeWithElevenLabs(payload, settings);
   }
 
   if (provider !== "gladia") {
@@ -521,7 +572,8 @@ ipcMain.handle("gladia:transcribe", async (_event, payload) => {
     result,
     payload.subtitleDefaults,
     keepTogetherPhrases,
-    payload.spellingRules || []
+    payload.spellingRules || [],
+    payload.referenceScript || ""
   );
   if (!srtText) {
     throw new Error("Gladia completed the job, but no SRT subtitle payload was returned.");
@@ -556,6 +608,165 @@ ipcMain.handle("gladia:transcribe", async (_event, payload) => {
 });
 }
 
+async function transcribeWithElevenLabs(payload, settings) {
+  const apiKey = payload.apiKey || settings.apiKey;
+  if (!apiKey) {
+    throw new Error("Add your ElevenLabs API key in Settings before transcribing.");
+  }
+
+  const filePath = payload.filePath;
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error("The selected media file could not be found.");
+  }
+
+  emitJobProgress(filePath, "uploading", "Uploading media to ElevenLabs");
+  const result = await runElevenLabsTranscription(apiKey, filePath, payload);
+  const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
+  const timedWords = extractElevenLabsTimedWords(result, payload.spellingRules || settings.spellingRules || []);
+
+  if (timedWords.length === 0) {
+    throw new Error("ElevenLabs completed the job, but did not return word-level timestamps.");
+  }
+
+  const elevenLabsSrt = buildSrtFromWhisperTimedWords(
+    timedWords,
+    payload.subtitleDefaults || settings.subtitleDefaults || defaultSettings.subtitleDefaults,
+    keepTogetherPhrases
+  );
+  const srtText = applySrtRules(
+    elevenLabsSrt.srtText,
+    payload.subtitleDefaults || settings.subtitleDefaults || defaultSettings.subtitleDefaults,
+    keepTogetherPhrases,
+    payload.spellingRules || settings.spellingRules || [],
+    payload.referenceScript || "",
+    { cueConfidence: elevenLabsSrt.cueConfidence }
+  );
+
+  const id = `elevenlabs-${Date.now()}`;
+  const archivePath = archiveSrt(id, path.basename(filePath), srtText);
+  const updatedSettings = readSettings();
+  const existingIndex = updatedSettings.history.findIndex((item) => item.filePath === filePath);
+  const historyItem = {
+    id,
+    filePath,
+    fileName: path.basename(filePath),
+    createdAt: new Date().toISOString(),
+    status: "done",
+    duration: inferElevenLabsDuration(result),
+    archivePath,
+    outputPath: "",
+    provider: "elevenlabs"
+  };
+  if (existingIndex >= 0) updatedSettings.history.splice(existingIndex, 1);
+  updatedSettings.history.unshift(historyItem);
+  updatedSettings.history = updatedSettings.history.slice(0, 100);
+  writeSettings(updatedSettings);
+
+  emitJobProgress(filePath, "review", "Ready to review and export");
+  return {
+    id,
+    filePath,
+    fileName: path.basename(filePath),
+    srtText,
+    raw: {
+      provider: "elevenlabs",
+      model: "scribe_v2",
+      languageCode: result.language_code || null,
+      languageProbability: result.language_probability ?? null,
+      timingSource: "elevenlabs-word-timestamps"
+    }
+  };
+}
+
+async function runElevenLabsTranscription(apiKey, filePath, payload) {
+  const form = new FormData();
+  const buffer = fs.readFileSync(filePath);
+  form.append("file", new Blob([buffer]), path.basename(filePath));
+  form.append("model_id", "scribe_v2");
+  form.append("language_code", "en");
+  form.append("timestamps_granularity", "word");
+  form.append("tag_audio_events", "false");
+  form.append("diarize", "false");
+  form.append("no_verbatim", "false");
+
+  if (payload.elevenLabsUseKeyterms) {
+    buildElevenLabsKeyterms(payload).forEach((term) => form.append("keyterms", term));
+  }
+
+  emitJobProgress(filePath, "transcribing", "Transcribing with ElevenLabs Scribe v2");
+  const response = await fetch(ELEVENLABS_STT_URL, {
+    method: "POST",
+    headers: { "xi-api-key": apiKey },
+    body: form
+  });
+
+  return parseResponse(response, "ElevenLabs transcription failed");
+}
+
+function buildElevenLabsKeyterms(payload = {}) {
+  const terms = new Set(["Based Supplies", "Tallow and Honey Balm", "beef tallow", "tallow balm", "eczema"]);
+  (payload.keepTogetherPhrases || []).forEach((phrase) => addElevenLabsKeyterm(terms, phrase));
+  (payload.vocabulary || []).forEach((entry) => addElevenLabsKeyterm(terms, entry.value));
+  (payload.spellingRules || []).forEach((rule) => addElevenLabsKeyterm(terms, rule.replacement));
+  extractReferenceScriptKeyterms(payload.referenceScript || "").forEach((term) => addElevenLabsKeyterm(terms, term));
+  return Array.from(terms).slice(0, 100);
+}
+
+function addElevenLabsKeyterm(terms, term) {
+  const normalized = String(term || "")
+    .replace(/[<>{}[\]\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return;
+  if (normalized.split(/\s+/).length > 5) return;
+  if (normalized.length >= 50) return;
+  terms.add(normalized);
+}
+
+function extractReferenceScriptKeyterms(text) {
+  return Array.from(new Set(String(text || "")
+    .match(/\b[A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,4}\b|\b(?:eczema|tallow|suet|balm|honey|grass-fed|dermatologist[s]?)\b/gi) || []))
+    .filter((term) => term.length > 2);
+}
+
+function extractElevenLabsTimedWords(result, spellingRules = []) {
+  const words = Array.isArray(result?.words)
+    ? result.words
+    : Array.isArray(result?.transcripts)
+      ? result.transcripts.flatMap((transcript) => transcript.words || [])
+      : [];
+
+  return words
+    .filter((word) => word?.type !== "spacing")
+    .map((word) => {
+      const text = cleanWord(applyLocalSpellingRules(word.text || "", spellingRules));
+      const start = Number(word.start);
+      const end = Number(word.end);
+      return {
+        text,
+        start,
+        end: Math.max(end, start + 0.03),
+        confidence: elevenLabsWordConfidence(word)
+      };
+    })
+    .filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end));
+}
+
+function elevenLabsWordConfidence(word) {
+  const confidence = Number(word.confidence ?? word.probability ?? word.prob);
+  if (Number.isFinite(confidence) && confidence >= 0 && confidence <= 1) return confidence;
+
+  const logprob = Number(word.logprob);
+  if (Number.isFinite(logprob)) return Math.max(0, Math.min(1, Math.exp(logprob)));
+  return null;
+}
+
+function inferElevenLabsDuration(result) {
+  const words = Array.isArray(result?.words) ? result.words : [];
+  const lastWord = [...words].reverse().find((word) => Number.isFinite(Number(word?.end)));
+  return lastWord ? Number(lastWord.end) : null;
+}
+
 async function transcribeWithLocalWhisper(payload, settings) {
   const filePath = payload.filePath;
   if (!filePath || !fs.existsSync(filePath)) {
@@ -572,46 +783,58 @@ async function transcribeWithLocalWhisper(payload, settings) {
     }
 
     emitJobProgress(filePath, "transcribing", "Transcribing locally with Whisper");
-    const rawSrt = await runLocalWhisper(whisperInputPath, payload);
-  const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
-  const srtText = applySrtRules(
-    rawSrt,
-    payload.subtitleDefaults || settings.subtitleDefaults || defaultSettings.subtitleDefaults,
-    keepTogetherPhrases,
-    payload.spellingRules || settings.spellingRules || []
-  );
+    const whisperResult = await runLocalWhisper(whisperInputPath, payload);
+    const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
+    const localWhisperSrt = whisperResult.timedWords.length > 0
+      ? buildSrtFromWhisperTimedWords(
+        whisperResult.timedWords,
+        payload.subtitleDefaults || settings.subtitleDefaults || defaultSettings.subtitleDefaults,
+        keepTogetherPhrases
+      )
+      : { srtText: whisperResult.srtText, cueConfidence: whisperResult.cueConfidence };
+    const srtText = applySrtRules(
+      localWhisperSrt.srtText,
+      payload.subtitleDefaults || settings.subtitleDefaults || defaultSettings.subtitleDefaults,
+      keepTogetherPhrases,
+      payload.spellingRules || settings.spellingRules || [],
+      payload.referenceScript || "",
+      { cueConfidence: localWhisperSrt.cueConfidence }
+    );
 
-  const id = `local-whisper-${Date.now()}`;
-  const archivePath = archiveSrt(id, path.basename(filePath), srtText);
-  const updatedSettings = readSettings();
-  const existingIndex = updatedSettings.history.findIndex((item) => item.filePath === filePath);
-  const historyItem = {
-    id,
-    filePath,
-    fileName: path.basename(filePath),
-    createdAt: new Date().toISOString(),
-    status: "done",
-    duration: null,
-    archivePath,
-    outputPath: "",
-    provider: "local-whisper"
-  };
-  if (existingIndex >= 0) updatedSettings.history.splice(existingIndex, 1);
-  updatedSettings.history.unshift(historyItem);
-  updatedSettings.history = updatedSettings.history.slice(0, 100);
-  writeSettings(updatedSettings);
+    const id = `local-whisper-${Date.now()}`;
+    const archivePath = archiveSrt(id, path.basename(filePath), srtText);
+    const updatedSettings = readSettings();
+    const existingIndex = updatedSettings.history.findIndex((item) => item.filePath === filePath);
+    const historyItem = {
+      id,
+      filePath,
+      fileName: path.basename(filePath),
+      createdAt: new Date().toISOString(),
+      status: "done",
+      duration: null,
+      archivePath,
+      outputPath: "",
+      provider: "local-whisper"
+    };
+    if (existingIndex >= 0) updatedSettings.history.splice(existingIndex, 1);
+    updatedSettings.history.unshift(historyItem);
+    updatedSettings.history = updatedSettings.history.slice(0, 100);
+    writeSettings(updatedSettings);
 
-  emitJobProgress(filePath, "review", "Ready to review and export");
-  return {
-    id,
-    filePath,
-    fileName: path.basename(filePath),
-    srtText,
+    emitJobProgress(filePath, "review", "Ready to review and export");
+    return {
+      id,
+      filePath,
+      fileName: path.basename(filePath),
+      srtText,
       raw: {
         provider: "local-whisper",
-        normalizedInput: temporaryAudioPath ? "video-to-mp3" : "original"
+        normalizedInput: temporaryAudioPath ? "video-to-mp3" : "original",
+        cueConfidence: localWhisperSrt.cueConfidence,
+        model: whisperResult.model,
+        timingSource: whisperResult.timedWords.length > 0 ? "whisper-json-token-timestamps" : "whisper-srt"
       }
-  };
+    };
   } finally {
     if (temporaryAudioPath) {
       fs.rmSync(temporaryAudioPath, { force: true });
@@ -629,8 +852,64 @@ function whisperCliPath() {
   return path.join(whisperResourceDir(), "bin", "Release", "whisper-cli.exe");
 }
 
-function whisperModelPath() {
-  return path.join(whisperResourceDir(), LOCAL_WHISPER_MODEL_FILE);
+function bundledWhisperModelPath(model) {
+  return path.join(whisperResourceDir(), model.fileName);
+}
+
+function downloadedWhisperModelDir() {
+  return path.join(app.getPath("userData"), "models");
+}
+
+function downloadedWhisperModelPath(model) {
+  return path.join(downloadedWhisperModelDir(), model.fileName);
+}
+
+function selectedWhisperModel(payload = {}) {
+  const key = payload.whisperModel || DEFAULT_WHISPER_MODEL;
+  return WHISPER_MODELS[key] ? { key, ...WHISPER_MODELS[key] } : { key: DEFAULT_WHISPER_MODEL, ...WHISPER_MODELS[DEFAULT_WHISPER_MODEL] };
+}
+
+async function ensureWhisperModel(model, filePath) {
+  if (model.bundled) {
+    const modelPath = bundledWhisperModelPath(model);
+    if (!fs.existsSync(modelPath)) {
+      throw new Error(`Local Whisper model is missing from the app package: ${model.label}`);
+    }
+    return modelPath;
+  }
+
+  const modelPath = downloadedWhisperModelPath(model);
+  if (fs.existsSync(modelPath)) return modelPath;
+  if (!model.url) throw new Error(`No download URL is configured for ${model.label}.`);
+
+  fs.mkdirSync(downloadedWhisperModelDir(), { recursive: true });
+  const temporaryPath = `${modelPath}.download`;
+  fs.rmSync(temporaryPath, { force: true });
+  emitJobProgress(filePath, "preparing", `Downloading Whisper ${model.label} model`);
+
+  const response = await fetch(model.url);
+  if (!response.ok) {
+    throw new Error(`Failed to download Whisper ${model.label}: ${response.statusText}`);
+  }
+
+  const totalBytes = Number(response.headers.get("content-length"));
+  let downloadedBytes = 0;
+  const file = fs.createWriteStream(temporaryPath);
+  try {
+    for await (const chunk of response.body) {
+      file.write(chunk);
+      downloadedBytes += chunk.length;
+      if (Number.isFinite(totalBytes) && totalBytes > 0) {
+        const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+        emitJobProgress(filePath, "preparing", `Downloading Whisper ${model.label} model (${percent}%)`);
+      }
+    }
+  } finally {
+    await new Promise((resolve) => file.end(resolve));
+  }
+
+  fs.renameSync(temporaryPath, modelPath);
+  return modelPath;
 }
 
 function ffmpegResourceDir() {
@@ -699,6 +978,46 @@ function convertVideoToAudio(filePath) {
   });
 }
 
+async function extractPdfText(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error("The selected PDF file could not be found.");
+  }
+  if (path.extname(filePath).toLowerCase() !== ".pdf") {
+    throw new Error("Choose a PDF file for the reference script.");
+  }
+
+  const pdfParse = require("pdf-parse");
+  const buffer = fs.readFileSync(filePath);
+  const result = await pdfParse(buffer);
+  const text = normalizeReferenceScriptText(result.text || "");
+  if (!text) {
+    throw new Error("No selectable text was found in this PDF. If it is a scanned image PDF, copy/paste the script text instead.");
+  }
+  return text;
+}
+
+function normalizeReferenceScriptText(text) {
+  return cleanReferenceScriptForAssist(text)
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function cleanReferenceScriptForAssist(text) {
+  return String(text)
+    .replace(/\r/g, "\n")
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^(script\s*line|script|title|caption|voiceover|voice\s*over|notes?|hook|cta|angle|option)\s*:?$/i.test(line))
+    .map((line) => line
+      .replace(/^(?:hook|script|title|caption|voiceover|voice\s*over|cta|angle|option)\s*\d*\s*:\s*/i, "")
+      .replace(/^\d+\s*:\s+/, ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
 function buildWhisperPrompt(payload) {
   const terms = new Set(["Based Supplies", "Tallow and Honey Balm"]);
   (payload.keepTogetherPhrases || []).forEach((phrase) => {
@@ -718,21 +1037,26 @@ function withDefaultSpellingRules(spellingRules = []) {
   return rules;
 }
 
-function runLocalWhisper(filePath, payload) {
+async function runLocalWhisper(filePath, payload) {
   const exePath = whisperCliPath();
-  const modelPath = whisperModelPath();
+  const model = selectedWhisperModel(payload);
   if (!fs.existsSync(exePath)) {
     throw new Error("Local Whisper is missing from the app package.");
   }
-  if (!fs.existsSync(modelPath)) {
-    throw new Error("Local Whisper model is missing from the app package.");
-  }
+  const modelPath = await ensureWhisperModel(model, payload.filePath || filePath);
+  emitJobProgress(
+    payload.filePath || filePath,
+    "transcribing",
+    `Transcribing locally with Whisper ${model.label}${model.key !== DEFAULT_WHISPER_MODEL ? " (this can take a while)" : ""}`
+  );
 
   const outputBase = path.join(app.getPath("temp"), `subtitle-generator-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const args = [
     "-m", modelPath,
     "-f", filePath,
     "-osrt",
+    "-oj",
+    "-ojf",
     "-of", outputBase,
     "-l", "en",
     "-t", String(Math.max(2, Math.min(8, require("os").cpus().length || 4))),
@@ -763,15 +1087,118 @@ function runLocalWhisper(filePath, payload) {
       }
 
       const srtPath = `${outputBase}.srt`;
+      const jsonPath = `${outputBase}.json`;
       try {
         const srtText = fs.readFileSync(srtPath, "utf8");
+        const whisperJson = readWhisperJson(jsonPath);
+        const cueConfidence = readWhisperCueConfidence(whisperJson);
+        const timedWords = extractWhisperTimedWords(whisperJson, payload.spellingRules || []);
         fs.rmSync(srtPath, { force: true });
-        resolve(srtText);
+        fs.rmSync(jsonPath, { force: true });
+        resolve({ srtText, cueConfidence, timedWords, model: model.key });
       } catch (error) {
         reject(new Error(`Local Whisper finished but did not create an SRT file: ${error.message}`));
       }
     });
   });
+}
+
+function readWhisperJson(jsonPath) {
+  if (!fs.existsSync(jsonPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function whisperSegmentsFromJson(json) {
+  return Array.isArray(json?.transcription)
+    ? json.transcription
+    : Array.isArray(json?.segments)
+      ? json.segments
+      : [];
+}
+
+function readWhisperCueConfidence(json) {
+  return whisperSegmentsFromJson(json).map((segment) => estimateWhisperSegmentConfidence(segment));
+}
+
+function estimateWhisperSegmentConfidence(segment) {
+  const tokenProbabilities = (segment.tokens || [])
+    .filter((token) => {
+      const text = String(token.text || "").trim();
+      return text && !/^\[[_A-Z0-9]+\]$/.test(text) && normalizeToken(text);
+    })
+    .map((token) => Number(token.p ?? token.probability ?? token.prob))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1);
+  if (tokenProbabilities.length > 0) {
+    return tokenProbabilities.reduce((sum, value) => sum + value, 0) / tokenProbabilities.length;
+  }
+
+  const avgLogprob = Number(segment.avg_logprob ?? segment.avgLogprob ?? segment["avg logprob"]);
+  if (Number.isFinite(avgLogprob)) {
+    return Math.max(0, Math.min(1, Math.exp(avgLogprob)));
+  }
+
+  return null;
+}
+
+function extractWhisperTimedWords(json, spellingRules = []) {
+  return whisperSegmentsFromJson(json).flatMap((segment) => {
+    const words = [];
+    let current = null;
+
+    const flush = () => {
+      if (!current) return;
+      const text = cleanWord(applyLocalSpellingRules(current.text, spellingRules));
+      if (text && Number.isFinite(current.start) && Number.isFinite(current.end)) {
+        words.push({
+          text,
+          start: current.start,
+          end: Math.max(current.end, current.start + 0.03),
+          confidence: current.probabilities.length
+            ? current.probabilities.reduce((sum, value) => sum + value, 0) / current.probabilities.length
+            : null
+        });
+      }
+      current = null;
+    };
+
+    (segment.tokens || []).forEach((token) => {
+      const piece = String(token.text || "");
+      const trimmed = piece.trim();
+      if (!trimmed || /^\[[_A-Z0-9]+\]$/.test(trimmed)) return;
+
+      const start = Number(token.offsets?.from) / 1000;
+      const end = Number(token.offsets?.to) / 1000;
+      const probability = Number(token.p ?? token.probability ?? token.prob);
+      const startsNewWord = /^\s/.test(piece) && current && normalizeToken(trimmed);
+      const normalized = normalizeToken(trimmed);
+
+      if (startsNewWord) flush();
+
+      if (!current) {
+        current = {
+          text: trimmed,
+          start: Number.isFinite(start) ? start : Number(segment.offsets?.from || 0) / 1000,
+          end: Number.isFinite(end) ? end : Number(segment.offsets?.to || segment.offsets?.from || 0) / 1000,
+          probabilities: []
+        };
+      } else {
+        current.text += normalized ? trimmed : trimmed;
+        if (Number.isFinite(end)) current.end = Math.max(current.end, end);
+      }
+
+      if (Number.isFinite(start)) current.start = Math.min(current.start, start);
+      if (Number.isFinite(end)) current.end = Math.max(current.end, end);
+      if (Number.isFinite(probability) && probability >= 0 && probability <= 1) {
+        current.probabilities.push(probability);
+      }
+    });
+    flush();
+    return words;
+  }).filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end));
 }
 
 async function uploadFile(apiKey, filePath) {
@@ -917,15 +1344,27 @@ function upsertHistorySrt(filePath, srtText, outputPath = "") {
   writeSettings(settings);
 }
 
-function extractSrt(result, subtitleDefaults, keepTogetherPhrases, spellingRules = []) {
+function extractSrt(result, subtitleDefaults, keepTogetherPhrases, spellingRules = [], referenceScript = "") {
   const sentences = extractGladiaSentences(result);
   if (sentences.length > 0) {
-    return buildSrtFromSentences(sentences, subtitleDefaults, keepTogetherPhrases, spellingRules);
+    return applyScriptAssistToFormattedSrt(
+      buildSrtFromSentences(sentences, subtitleDefaults, keepTogetherPhrases, spellingRules),
+      subtitleDefaults,
+      keepTogetherPhrases,
+      spellingRules,
+      referenceScript
+    );
   }
 
   const utterances = result.result?.transcription?.utterances || result.transcription?.utterances || [];
   if (Array.isArray(utterances) && utterances.length > 0) {
-    return buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrases, spellingRules);
+    return applyScriptAssistToFormattedSrt(
+      buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrases, spellingRules),
+      subtitleDefaults,
+      keepTogetherPhrases,
+      spellingRules,
+      referenceScript
+    );
   }
 
   const candidates = [
@@ -940,7 +1379,7 @@ function extractSrt(result, subtitleDefaults, keepTogetherPhrases, spellingRules
   for (const subtitles of candidates) {
     const srt = subtitles.find((item) => item.format === "srt");
     if (srt?.subtitles) {
-      return postProcessSrtText(srt.subtitles, keepTogetherPhrases, subtitleDefaults, spellingRules);
+      return postProcessSrtText(srt.subtitles, keepTogetherPhrases, subtitleDefaults, spellingRules, referenceScript);
     }
   }
 
@@ -987,6 +1426,16 @@ function buildSrtFromUtterances(utterances, subtitleDefaults, keepTogetherPhrase
   const repairedCues = words.length > 0 ? repairTimedCues(cues, settings, keepTogetherPhrases) : cues;
   const adjustedCues = applyCaptionGaps(enforceMinimumDuration(mergeSingleWordCues(repairedCues), settings), settings);
   return formatTimedCues(adjustedCues, settings);
+}
+
+function buildSrtFromWhisperTimedWords(words, subtitleDefaults, keepTogetherPhrases) {
+  const settings = normalizeSubtitleSettings(subtitleDefaults);
+  const cues = buildOptimizedCuesFromWords(words, settings, keepTogetherPhrases);
+  const adjustedCues = applyCaptionGaps(enforceMinimumDuration(mergeSingleWordCues(cues), settings), settings);
+  return {
+    srtText: formatTimedCues(adjustedCues, settings),
+    cueConfidence: adjustedCues.map((cue) => Number.isFinite(cue.confidence) ? cue.confidence : null)
+  };
 }
 
 function formatTimedCues(cues, settings) {
@@ -1224,6 +1673,12 @@ function scoreCueCandidate(words, startIndex, endIndex, settings, keepTogetherPh
   if (wouldBreakProtectedPhraseAt(words, endIndex, keepTogetherPhrases)) score += 1200;
   if (isNumberLike(endWord) && UNIT_WORDS.has(nextWord)) score += 1200;
   if (UNIT_WORDS.has(endWord) && isNumberTerm(nextWord)) score += 1200;
+  if (
+    (
+      CAPITALIZED_SEQUENCE_STARTS.has(cleanSubtitleText(words[endIndex].text).replace(/[^\w'-]+$/g, ""))
+      || CAPITALIZED_FRAGMENT_STARTS.has(cleanSubtitleText(words[endIndex].text).replace(/[^\w'-]+$/g, ""))
+    ) && nextWord
+  ) score += 1600;
   if (hasLowercaseContinuationBreak(cueTextWords, nextTextWords)) score += 900;
   if (hasIncompleteVerbPhraseBeforeObject(cueTextWords, nextTextWords)) score += 1000;
   if (hasDanglingFunctionPhrase(cueTextWords, nextTextWords)) score += 1400;
@@ -1428,14 +1883,24 @@ function isBadBreak(words, endIndex, keepTogetherPhrases) {
   return badEndCategoryPenalty(endWord) >= 180
     || badStartCategoryPenalty(nextWord) >= 180
     || /[,:;]$/.test(words[endIndex]?.text || "")
+    || ((
+      CAPITALIZED_SEQUENCE_STARTS.has(cleanSubtitleText(words[endIndex]?.text || "").replace(/[^\w'-]+$/g, ""))
+      || CAPITALIZED_FRAGMENT_STARTS.has(cleanSubtitleText(words[endIndex]?.text || "").replace(/[^\w'-]+$/g, ""))
+    ) && Boolean(nextWord))
     || wouldBreakProtectedPhraseAt(words, endIndex, keepTogetherPhrases);
 }
 
 function wordsToCue(words) {
+  const confidences = words
+    .map((word) => Number(word.confidence))
+    .filter((confidence) => Number.isFinite(confidence));
   return {
     start: words[0].start,
     end: Math.max(words[words.length - 1].end, words[0].start + 0.1),
-    text: wordsToText(words)
+    text: wordsToText(words),
+    confidence: confidences.length
+      ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+      : null
   };
 }
 
@@ -1508,6 +1973,7 @@ function mergeSingleWordCues(cues) {
     if (previous && !endsSentence(previous.text) && !endsSentence(cue.text)) {
       previous.text = `${previous.text} ${cue.text}`.trim();
       previous.end = cue.end;
+      previous.confidence = averageConfidence(previous.confidence, cue.confidence);
       return merged;
     }
 
@@ -1515,6 +1981,7 @@ function mergeSingleWordCues(cues) {
     if (nextCue && !endsSentence(cue.text)) {
       nextCue.text = `${cue.text} ${nextCue.text}`.trim();
       nextCue.start = cue.start;
+      nextCue.confidence = averageConfidence(cue.confidence, nextCue.confidence);
       return merged;
     }
 
@@ -1523,18 +1990,38 @@ function mergeSingleWordCues(cues) {
   }, []);
 }
 
+function averageConfidence(...values) {
+  const confidences = values.map(Number).filter((value) => Number.isFinite(value));
+  return confidences.length
+    ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+    : null;
+}
+
 function cleanWord(word) {
   return cleanSubtitleText(word);
 }
 
 function cleanSubtitleText(text) {
   return String(text)
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+([,!?;:])/g, "$1")
+    .replace(/,(?=\S)(?!\d)/g, ", ")
+    .replace(/([!?;:])(?=\S)/g, "$1 ")
+    .replace(/(\d+):\s+(\d{2})\b/g, "$1:$2")
+    .replace(/([A-Za-z])(\$)/g, "$1 $2")
+    .replace(/(\$\d+),\s+(\d{3})/g, "$1,$2")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function formatSubtitleForExport(text) {
-  return cleanSubtitleText(text)
+  return normalizeGenericTallowCasing(cleanSubtitleText(text))
+    .replace(/\bBeef tallow\b/g, "beef tallow")
+    .replace(/\bBeef fat\b/g, "beef fat")
+    .replace(/\bRaw honey\b/g, "raw honey")
+    .replace(/\bOlive oil\b/g, "olive oil")
+    .replace(/["]/g, "")
     .replace(/\./g, "")
     .replace(/,+$/g, "")
     .replace(/\s+/g, " ")
@@ -1545,18 +2032,374 @@ function postProcessSrtText(
   srtText,
   keepTogetherPhrases,
   subtitleDefaults = defaultSettings.subtitleDefaults,
-  spellingRules = []
+  spellingRules = [],
+  referenceScript = "",
+  scriptAssistOptions = {}
 ) {
   const settings = normalizeSubtitleSettings(subtitleDefaults);
-  return formatSrtCues(postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules), settings);
+  const scriptAssistedSrt = applyReferenceScriptToSrt(srtText, referenceScript, scriptAssistOptions);
+  return formatSrtCues(postProcessSrtCues(scriptAssistedSrt, keepTogetherPhrases, subtitleDefaults, spellingRules), settings);
 }
 
-function applySrtRules(srtText, subtitleDefaults, keepTogetherPhrases, spellingRules = []) {
+function applySrtRules(srtText, subtitleDefaults, keepTogetherPhrases, spellingRules = [], referenceScript = "", scriptAssistOptions = {}) {
   const settings = normalizeSubtitleSettings(subtitleDefaults);
+  const scriptAssistedSrt = applyReferenceScriptToSrt(srtText, referenceScript, scriptAssistOptions);
   return formatSrtCues(applyCaptionGapsToSrtCues(
-    postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules),
+    postProcessSrtCues(scriptAssistedSrt, keepTogetherPhrases, subtitleDefaults, spellingRules),
     settings
   ), settings);
+}
+
+function applyScriptAssistToFormattedSrt(srtText, subtitleDefaults, keepTogetherPhrases, spellingRules, referenceScript, scriptAssistOptions = {}) {
+  if (!String(referenceScript || "").trim()) return srtText;
+  return postProcessSrtText(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules, referenceScript, scriptAssistOptions);
+}
+
+function applyReferenceScriptToSrt(srtText, referenceScript, options = {}) {
+  if (!String(referenceScript || "").trim()) return srtText;
+  const cues = parseSrtCueBlocks(srtText);
+  if (cues.length === 0) return srtText;
+
+  const scriptTokens = tokenizeReferenceScript(referenceScript);
+  if (scriptTokens.length < 4) return srtText;
+
+  const transcriptTokens = [];
+  cues.forEach((cue, cueIndex) => {
+    tokenList(cue.text).forEach((word, cueWordIndex) => {
+      const normalized = normalizeToken(word);
+      if (!normalized) return;
+      transcriptTokens.push({
+        text: word,
+        normalized,
+        cueIndex,
+        cueWordIndex
+      });
+    });
+  });
+  if (transcriptTokens.length < 4) return srtText;
+
+  const mappings = alignTokenSequences(
+    transcriptTokens.map((token) => token.normalized),
+    scriptTokens.map((token) => token.normalized)
+  );
+  if (mappings.length < Math.max(4, Math.min(transcriptTokens.length, scriptTokens.length) * 0.25)) return srtText;
+
+  const mappingByTranscriptIndex = new Map(mappings.map((mapping) => [mapping.transcriptIndex, mapping.scriptIndex]));
+  const scriptTokenSet = new Set(scriptTokens.map((token) => token.normalized));
+  const updatedCues = cues.map((cue, cueIndex) => {
+    const cueTranscriptIndexes = transcriptTokens
+      .map((token, transcriptIndex) => ({ token, transcriptIndex }))
+      .filter((entry) => entry.token.cueIndex === cueIndex);
+    if (cueTranscriptIndexes.length === 0) return cue;
+
+    const mapped = cueTranscriptIndexes
+      .map((entry, offset) => ({
+        ...entry,
+        offset,
+        scriptIndex: mappingByTranscriptIndex.get(entry.transcriptIndex)
+      }))
+      .filter((entry) => Number.isInteger(entry.scriptIndex));
+
+    const minimumAnchors = cueTranscriptIndexes.length <= 3 ? 1 : 2;
+    const anchorRatio = mapped.length / cueTranscriptIndexes.length;
+    if (mapped.length < minimumAnchors || anchorRatio < 0.34) return cue;
+
+    const firstMapped = mapped[0];
+    const lastMapped = mapped[mapped.length - 1];
+    let scriptStart = firstMapped.scriptIndex - firstMapped.offset;
+    let scriptEnd = lastMapped.scriptIndex + (cueTranscriptIndexes.length - 1 - lastMapped.offset);
+    scriptStart = Math.max(scriptStart, 0);
+    scriptEnd = Math.min(scriptTokens.length - 1, scriptEnd);
+    const nextMapped = transcriptTokens
+      .map((token, transcriptIndex) => ({ token, transcriptIndex, scriptIndex: mappingByTranscriptIndex.get(transcriptIndex) }))
+      .find((entry) => entry.token.cueIndex > cueIndex && Number.isInteger(entry.scriptIndex));
+    if (nextMapped && nextMapped.scriptIndex > scriptEnd + 1 && nextMapped.scriptIndex - scriptEnd <= 3) {
+      scriptEnd = nextMapped.scriptIndex - 1;
+    }
+    if (scriptEnd < scriptStart) return cue;
+
+    const baseScriptSlice = scriptTokens.slice(scriptStart, scriptEnd + 1);
+    const phraseCorrectedText = applyAnchoredScriptPhraseCorrections(cueTranscriptIndexes, baseScriptSlice, scriptTokenSet);
+    if (phraseCorrectedText) {
+      return {
+        ...cue,
+        text: phraseCorrectedText
+      };
+    }
+
+    const scriptSlice = baseScriptSlice;
+    if (hasSkippedTranscriptTokenNearbyScript(cueTranscriptIndexes, mapped, scriptTokens, scriptStart, scriptEnd)) return cue;
+    const confidence = Array.isArray(options.cueConfidence) ? options.cueConfidence[cueIndex] : null;
+    if (!isConfidentScriptCueReplacement(cueTranscriptIndexes, scriptSlice, confidence)) return cue;
+    return {
+      ...cue,
+      text: scriptSlice.map((token) => token.text).join(" ")
+    };
+  });
+
+  return formatRawSrtCueBlocks(updatedCues);
+}
+
+function applyAnchoredScriptPhraseCorrections(cueTranscriptIndexes, scriptSlice, scriptTokenSet) {
+  const cueTokens = cueTranscriptIndexes.map((entry) => entry.token);
+  const scriptNormalized = scriptSlice.map((token) => token.normalized);
+  const cueNormalized = cueTokens.map((token) => token.normalized);
+  let corrected = null;
+
+  for (let phraseLength = 4; phraseLength >= 1; phraseLength -= 1) {
+    for (let cueStart = 0; cueStart <= cueTokens.length - phraseLength; cueStart += 1) {
+      const cueEnd = cueStart + phraseLength - 1;
+      const transcriptPhrase = cueNormalized.slice(cueStart, cueEnd + 1);
+      if (transcriptPhrase.length === 0) continue;
+      const unsupportedCount = transcriptPhrase.filter((token) => !scriptTokenSet.has(token)).length;
+      if (unsupportedCount < Math.max(1, Math.ceil(transcriptPhrase.length * 0.6))) continue;
+
+      const scriptSearchStart = Math.max(0, cueStart - 2);
+      const scriptSearchEnd = Math.min(scriptSlice.length - 1, cueEnd + 2);
+      for (let scriptStart = scriptSearchStart; scriptStart <= scriptSearchEnd; scriptStart += 1) {
+        for (let scriptEnd = scriptStart; scriptEnd <= Math.min(scriptSearchEnd, scriptStart + 2); scriptEnd += 1) {
+          const replacementPhrase = scriptNormalized.slice(scriptStart, scriptEnd + 1);
+          if (!isAnchoredPhraseReplacement(cueNormalized, transcriptPhrase, cueStart, cueEnd, scriptNormalized, replacementPhrase, scriptStart, scriptEnd)) continue;
+          const nextTokens = [
+            ...cueTokens.slice(0, cueStart).map((token) => token.text),
+            ...scriptSlice.slice(scriptStart, scriptEnd + 1).map((token) => token.text),
+            ...cueTokens.slice(cueEnd + 1).map((token) => token.text)
+          ];
+          corrected = nextTokens.join(" ");
+          return corrected;
+        }
+      }
+    }
+  }
+
+  return corrected;
+}
+
+function isAnchoredPhraseReplacement(cueTokens, transcriptPhrase, cueStart, cueEnd, scriptTokens, replacementPhrase, scriptStart, scriptEnd) {
+  if (replacementPhrase.length === 0) return false;
+  const lengthDelta = Math.abs(transcriptPhrase.length - replacementPhrase.length);
+  if (lengthDelta === 0 || lengthDelta > 2) return false;
+  if (transcriptPhrase.length <= replacementPhrase.length) return false;
+  const leftAnchors = countMatchingPrefixBackwards(cueTokens, scriptTokens, cueStart - 1, scriptStart - 1);
+  const rightAnchors = countMatchingPrefixForwards(cueTokens, scriptTokens, cueEnd + 1, scriptEnd + 1);
+  if (leftAnchors < 1 || rightAnchors < 1 || leftAnchors + rightAnchors < 2) return false;
+  if (isWordOrderOnlyDifference(transcriptPhrase, replacementPhrase)) return false;
+
+  const transcriptSound = phoneticPhraseKey(transcriptPhrase);
+  const replacementSound = phoneticPhraseKey(replacementPhrase);
+  const distance = levenshteinDistance(transcriptSound, replacementSound);
+  const maxLength = Math.max(transcriptSound.length, replacementSound.length);
+  if (maxLength === 0) return false;
+  return distance / maxLength <= 0.45 || replacementPhrase.some((token) => token.length >= 6);
+}
+
+function countMatchingPrefixBackwards(leftTokens, rightTokens, leftIndex, rightIndex) {
+  let count = 0;
+  for (let a = leftIndex, b = rightIndex; a >= 0 && b >= 0; a -= 1, b -= 1) {
+    if (leftTokens[a] !== rightTokens[b]) break;
+    count += 1;
+  }
+  return count;
+}
+
+function countMatchingPrefixForwards(leftTokens, rightTokens, leftIndex, rightIndex) {
+  let count = 0;
+  for (let a = leftIndex, b = rightIndex; a < leftTokens.length && b < rightTokens.length; a += 1, b += 1) {
+    if (leftTokens[a] !== rightTokens[b]) break;
+    count += 1;
+  }
+  return count;
+}
+
+function phoneticPhraseKey(tokens) {
+  return tokens
+    .join("")
+    .replace(/ph/g, "f")
+    .replace(/[ckq]/g, "k")
+    .replace(/x/g, "ks")
+    .replace(/z/g, "s")
+    .replace(/[aeiouy]+/g, "a")
+    .replace(/(.)\1+/g, "$1");
+}
+
+function hasSkippedTranscriptTokenNearbyScript(cueTranscriptIndexes, mapped, scriptTokens, scriptStart, scriptEnd) {
+  const mappedOffsets = new Set(mapped.map((entry) => entry.offset));
+  return cueTranscriptIndexes.some((entry, offset) => {
+    if (mappedOffsets.has(offset)) return false;
+    const token = entry.token.normalized;
+    const nearbyStart = Math.max(0, scriptStart - 3);
+    const nearbyEnd = Math.min(scriptTokens.length - 1, scriptEnd + 3);
+    return scriptTokens
+      .slice(nearbyStart, nearbyEnd + 1)
+      .some((scriptToken) => scriptToken.normalized === token);
+  });
+}
+
+function parseSrtCueBlocks(srtText) {
+  return String(srtText)
+    .trim()
+    .split(/\n\s*\n/)
+    .flatMap((block) => {
+      const lines = block.split(/\r?\n/);
+      const timingIndex = lines.findIndex((line) => line.includes("-->"));
+      if (timingIndex === -1) return [];
+      return [{
+        index: lines[0] || "",
+        timing: lines[timingIndex].trim(),
+        text: lines.slice(timingIndex + 1).join(" ").trim()
+      }];
+    })
+    .filter((cue) => cue.text);
+}
+
+function formatRawSrtCueBlocks(cues) {
+  return cues.map((cue, index) => `${index + 1}\n${cue.timing}\n${cue.text}`).join("\n\n");
+}
+
+function tokenizeReferenceScript(scriptText) {
+  return cleanReferenceScriptForAssist(scriptText)
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .split(/\s+/)
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      text,
+      normalized: normalizeToken(text)
+    }))
+    .filter((token) => token.normalized);
+}
+
+function alignTokenSequences(transcriptTokens, scriptTokens) {
+  const transcriptCount = transcriptTokens.length;
+  const scriptCount = scriptTokens.length;
+  const width = scriptCount + 1;
+  const scores = new Uint16Array((transcriptCount + 1) * (scriptCount + 1));
+
+  for (let transcriptIndex = transcriptCount - 1; transcriptIndex >= 0; transcriptIndex -= 1) {
+    for (let scriptIndex = scriptCount - 1; scriptIndex >= 0; scriptIndex -= 1) {
+      const offset = (transcriptIndex * width) + scriptIndex;
+      if (transcriptTokens[transcriptIndex] === scriptTokens[scriptIndex]) {
+        scores[offset] = scores[((transcriptIndex + 1) * width) + scriptIndex + 1] + 1;
+      } else {
+        scores[offset] = Math.max(
+          scores[((transcriptIndex + 1) * width) + scriptIndex],
+          scores[(transcriptIndex * width) + scriptIndex + 1]
+        );
+      }
+    }
+  }
+
+  const mappings = [];
+  let transcriptIndex = 0;
+  let scriptIndex = 0;
+  while (transcriptIndex < transcriptCount && scriptIndex < scriptCount) {
+    if (transcriptTokens[transcriptIndex] === scriptTokens[scriptIndex]) {
+      mappings.push({ transcriptIndex, scriptIndex });
+      transcriptIndex += 1;
+      scriptIndex += 1;
+    } else if (scores[((transcriptIndex + 1) * width) + scriptIndex] >= scores[(transcriptIndex * width) + scriptIndex + 1]) {
+      transcriptIndex += 1;
+    } else {
+      scriptIndex += 1;
+    }
+  }
+
+  return mappings;
+}
+
+function isConfidentScriptCueReplacement(cueTranscriptIndexes, scriptSlice, confidence = null) {
+  if (scriptSlice.length === 0) return false;
+  const cueTokens = cueTranscriptIndexes.map((entry) => entry.token.normalized);
+  const scriptTokens = scriptSlice.map((token) => token.normalized);
+  const lengthDelta = Math.abs(cueTokens.length - scriptTokens.length);
+  if (lengthDelta > 0) return false;
+
+  const positionalMatches = cueTokens.reduce((count, token, index) => {
+    return count + (token === scriptTokens[index] ? 1 : 0);
+  }, 0);
+  const sharedTokens = cueTokens.filter((token) => scriptTokens.includes(token)).length;
+  const denominator = Math.max(cueTokens.length, scriptTokens.length);
+  const positionalRatio = positionalMatches / denominator;
+  const sharedRatio = sharedTokens / denominator;
+  const similarity = Math.max(positionalRatio, sharedRatio);
+  if (similarity < 0.5) return false;
+  if (isWordOrderOnlyDifference(cueTokens, scriptTokens)) return false;
+
+  const lowConfidence = Number.isFinite(confidence) && confidence < 0.78;
+  const unknownConfidence = !Number.isFinite(confidence);
+  const suspicious = isSuspiciousTranscriptCue(cueTranscriptIndexes, scriptSlice, {
+    positionalRatio,
+    sharedRatio,
+    lengthDelta
+  });
+
+  if (lowConfidence) return suspicious && similarity >= 0.6;
+  if (unknownConfidence) return false;
+  return suspicious && similarity >= 0.78;
+}
+
+function isWordOrderOnlyDifference(cueTokens, scriptTokens) {
+  if (cueTokens.length !== scriptTokens.length) return false;
+  if (cueTokens.every((token, index) => token === scriptTokens[index])) return false;
+  const cueCounts = countTokens(cueTokens);
+  const scriptCounts = countTokens(scriptTokens);
+  if (cueCounts.size !== scriptCounts.size) return false;
+  for (const [token, count] of cueCounts.entries()) {
+    if (scriptCounts.get(token) !== count) return false;
+  }
+  return true;
+}
+
+function countTokens(tokens) {
+  return tokens.reduce((counts, token) => {
+    counts.set(token, (counts.get(token) || 0) + 1);
+    return counts;
+  }, new Map());
+}
+
+function isSuspiciousTranscriptCue(cueTranscriptIndexes, scriptSlice, matchStats) {
+  const cueTokens = cueTranscriptIndexes.map((entry) => entry.token.normalized);
+  const scriptTokens = scriptSlice.map((token) => token.normalized);
+  if (matchStats.lengthDelta > 0 && matchStats.sharedRatio >= 0.58) return true;
+  if (matchStats.positionalRatio >= 0.5 && matchStats.positionalRatio < 0.92) return true;
+
+  const mismatches = cueTokens
+    .map((token, index) => ({ token, replacement: scriptTokens[index] }))
+    .filter((entry) => entry.replacement && entry.token !== entry.replacement);
+  if (mismatches.length === 0) return false;
+  if (mismatches.length <= 2 && matchStats.sharedRatio >= 0.55) return true;
+
+  return mismatches.some(({ token, replacement }) => {
+    return areLikelyWhisperConfusions(token, replacement);
+  });
+}
+
+function areLikelyWhisperConfusions(transcriptToken, scriptToken) {
+  if (!transcriptToken || !scriptToken) return false;
+  if (transcriptToken === scriptToken) return false;
+  if (levenshteinDistance(transcriptToken, scriptToken) <= 2) return true;
+  if (transcriptToken.length <= 3 || scriptToken.length <= 3) return false;
+  return transcriptToken.charAt(0) === scriptToken.charAt(0)
+    && transcriptToken.charAt(transcriptToken.length - 1) === scriptToken.charAt(scriptToken.length - 1);
+}
+
+function levenshteinDistance(left, right) {
+  const a = String(left);
+  const b = String(right);
+  const distances = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = distances[0];
+    distances[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const saved = distances[j];
+      distances[j] = a[i - 1] === b[j - 1]
+        ? previous
+        : Math.min(previous + 1, distances[j] + 1, distances[j - 1] + 1);
+      previous = saved;
+    }
+  }
+  return distances[b.length];
 }
 
 function postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spellingRules = []) {
@@ -1579,8 +2422,14 @@ function postProcessSrtCues(srtText, keepTogetherPhrases, subtitleDefaults, spel
   const repairedCues = repairSrtCuesUntilStable(optimizeSrtCaptionWindows(smoothedCues, settings, keepTogetherPhrases), settings, keepTogetherPhrases);
   const grammarRepairedCues = repairLeadingPrepositionBeforeSentenceStartCues(repairDanglingFunctionPhraseCues(repairedCues, settings), settings);
   const finalOptimizedCues = optimizeSrtCaptionWindows(grammarRepairedCues, settings, keepTogetherPhrases);
-  const finalGrammarRepairedCues = repairLeadingPrepositionBeforeSentenceStartCues(finalOptimizedCues, settings);
-  return splitCuesAtLikelySentenceStarts(finalGrammarRepairedCues, keepTogetherPhrases);
+  const finalGrammarRepairedCues = repairDanglingFunctionPhraseCues(
+    repairTrailingSentenceStartCues(repairLeadingPrepositionBeforeSentenceStartCues(finalOptimizedCues, settings), settings),
+    settings
+  );
+  return mergeProtectedPhraseSrtCues(
+    repairDanglingFunctionPhraseCues(splitCuesAtLikelySentenceStarts(finalGrammarRepairedCues, keepTogetherPhrases), settings),
+    keepTogetherPhrases
+  );
 }
 
 function applyLocalSpellingRules(text, spellingRules) {
@@ -1589,6 +2438,7 @@ function applyLocalSpellingRules(text, spellingRules) {
     const replacement = (rule.replacement || "").trim();
     if (!original || !replacement) return updated;
     return updated.replace(new RegExp(escapeRegExp(original), "gi"), (match) => {
+      if (/^[A-Z0-9]+$/.test(match) && !startsUppercase(replacement)) return replacement;
       return startsUppercase(match) ? capitalizeFirst(replacement) : replacement;
     });
   }, normalizeGenericTallowCasing(text));
@@ -1600,6 +2450,9 @@ function capitalizeFirst(text) {
 
 function normalizeGenericTallowCasing(text) {
   return GENERIC_LOWERCASE_TERMS.reduce((updated, term) => {
+    if (term === "Tallow") {
+      return updated.replace(/\bTallow\b(?! and Honey Balm)/g, "tallow");
+    }
     return updated.replace(new RegExp(`\\b${escapeRegExp(term)}\\b`, "g"), term.toLowerCase());
   }, String(text));
 }
@@ -1767,12 +2620,20 @@ function hasIncompleteVerbPhraseBeforeObject(words, nextWords) {
 }
 
 function hasDanglingFunctionPhrase(words, nextWords) {
+  if (words.length === 1 && nextWords.length > 0) {
+    return isSubordinatingConjunction(normalizeToken(words[0])) || QUESTION_SENTENCE_STARTS.has(normalizeToken(words[0]));
+  }
   if (words.length < 2 || nextWords.length === 0) return false;
   const last = normalizeToken(words[words.length - 1]);
   const previous = normalizeToken(words[words.length - 2]);
   const nextStart = normalizeToken(nextWords[0]);
   if (isPreposition(previous) && isDeterminer(last)) return true;
   if (QUESTION_SENTENCE_STARTS.has(previous) && isAuxiliary(last)) return true;
+  if (isSubordinatingConjunction(previous) && (isAuxiliary(last) || SENTENCE_START_CONTRACTIONS.has(last))) return true;
+  if ((last === "here's" || last === "heres") && QUESTION_SENTENCE_STARTS.has(nextStart)) return true;
+  if (QUESTION_SENTENCE_STARTS.has(last)) {
+    return SUBJECT_PRONOUNS.has(nextStart) || isDeterminer(nextStart) || CLAUSE_SUBJECT_STARTS.has(nextStart);
+  }
   if (isAuxiliary(last) && words.slice(-4).some((word) => QUESTION_SENTENCE_STARTS.has(normalizeToken(word)))) {
     return SUBJECT_PRONOUNS.has(nextStart) || isDeterminer(nextStart) || CLAUSE_SUBJECT_STARTS.has(nextStart);
   }
@@ -1786,6 +2647,7 @@ function hasIncompleteOpenerFragment(words, nextWords) {
   if (isTemporalOpenerFragment(words, nextWords)) return true;
   if (!startsLowercase(nextWords[0] || "")) return false;
   if (DISCOURSE_SENTENCE_STARTS.has(first)) return true;
+  if (first === "because" && words.length <= 2) return true;
   if (DEMONSTRATIVE_DETERMINERS.has(first) && words.some((word) => NEGATIONS.has(normalizeToken(word)))) return true;
   if (isDeterminer(first) && words.length <= 3) return true;
   if (isPreposition(first) && (UNIT_WORDS.has(nextStart) || NUMBER_TERMS.has(nextStart))) return true;
@@ -2093,11 +2955,40 @@ function repairLeadingPrepositionBeforeSentenceStartCues(cues, settings) {
   return updated.filter((cue) => cue.text);
 }
 
+function repairTrailingSentenceStartCues(cues, settings) {
+  const updated = cues.map((cue) => ({ ...cue }));
+
+  for (let index = 0; index < updated.length - 1; index += 1) {
+    const cue = updated[index];
+    const nextCue = updated[index + 1];
+    const words = tokenList(cue.text);
+    if (words.length < 2) continue;
+    const trailing = words[words.length - 1];
+    const cleanTrailing = cleanSubtitleText(trailing).replace(/[^\w'-]+$/g, "");
+    if (
+      !CAPITALIZED_SEQUENCE_STARTS.has(cleanTrailing)
+      && !CAPITALIZED_FRAGMENT_STARTS.has(cleanTrailing)
+      && !(startsUppercase(trailing) && isSubordinatingConjunction(normalizeToken(trailing)))
+    ) continue;
+
+    const nextText = `${trailing} ${nextCue.text}`.trim();
+    if (nextText.length > settings.maximumCharactersPerRow) continue;
+
+    cue.text = words.slice(0, -1).join(" ");
+    nextCue.text = nextText;
+    const timing = splitCombinedTiming(cue.timing, nextCue.timing, cue.text, nextCue.text);
+    cue.timing = timing.current;
+    nextCue.timing = timing.next;
+  }
+
+  return updated.filter((cue) => cue.text);
+}
+
 function endsWithQuestionHelper(words) {
   if (words.length < 2) return false;
   const last = normalizeToken(words[words.length - 1]);
   const previous = normalizeToken(words[words.length - 2]);
-  return QUESTION_SENTENCE_STARTS.has(previous) && isAuxiliary(last);
+  return (QUESTION_SENTENCE_STARTS.has(previous) && isAuxiliary(last)) || QUESTION_SENTENCE_STARTS.has(last);
 }
 
 function srtCueSignature(cues) {
@@ -2119,7 +3010,10 @@ function splitTextAtLikelySentenceStarts(text, keepTogetherPhrases = []) {
   const pieces = [];
   let current = [];
   words.forEach((word, index) => {
-    if (index > 0 && current.length >= 2 && shouldStartNewSentencePiece(words, index, keepTogetherPhrases)) {
+    const rawWord = cleanSubtitleText(word).replace(/[^\w'-]+$/g, "");
+    const canSplitAfterShortLead = current.length >= 1
+      && (CAPITALIZED_SEQUENCE_STARTS.has(rawWord) || CAPITALIZED_FRAGMENT_STARTS.has(rawWord));
+    if (index > 0 && (current.length >= 2 || canSplitAfterShortLead) && shouldStartNewSentencePiece(words, index, keepTogetherPhrases)) {
       pieces.push(current.join(" "));
       current = [];
     }
@@ -2139,14 +3033,35 @@ function shouldStartNewSentencePiece(words, index, keepTogetherPhrases = []) {
   const isCapitalizedSubjectStart = isCapitalizedSubjectBeforePredicate(word, previousToken, nextToken);
   const isCapitalizedNounStart = isCapitalizedNounPhraseBeforePredicate(words, index, previousToken);
   const isCapitalizedDiscourseStart = startsUppercase(word) && DISCOURSE_SENTENCE_STARTS.has(token);
+  const isCapitalizedTemporalQuantityStart = startsUppercase(word)
+    && CAPITALIZED_NUMBER_TERMS.has(word)
+    && TEMPORAL_NOUNS.has(nextToken);
+  const isCapitalizedSequenceStart = CAPITALIZED_SEQUENCE_STARTS.has(cleanSubtitleText(word).replace(/[^\w'-]+$/g, ""))
+    && (
+      nextToken
+      && !isConjunction(previousToken)
+      && !isPreposition(previousToken)
+      && !isAuxiliary(previousToken)
+    );
+  const isCapitalizedFragmentStart = CAPITALIZED_FRAGMENT_STARTS.has(cleanSubtitleText(word).replace(/[^\w'-]+$/g, ""))
+    && nextToken
+    && !isConjunction(previousToken)
+    && !isPreposition(previousToken)
+    && !isAuxiliary(previousToken);
   if (
     !isLikelySentenceStart({ text: word })
     && !isCapitalizedSubjectStart
     && !isCapitalizedNounStart
     && !isCapitalizedDiscourseStart
+    && !isCapitalizedTemporalQuantityStart
+    && !isCapitalizedSequenceStart
+    && !isCapitalizedFragmentStart
   ) return false;
   if (POSSESSIVE_DETERMINERS.has(previousToken)) return false;
   if (isCapitalizedDiscourseStart && !isConjunction(previousToken) && !isPreposition(previousToken) && !isAuxiliary(previousToken)) return true;
+  if (isCapitalizedTemporalQuantityStart) return true;
+  if (isCapitalizedSequenceStart) return true;
+  if (isCapitalizedFragmentStart) return true;
   if (
     previousToken === "that"
     && startsUppercase(word)
@@ -2158,6 +3073,7 @@ function shouldStartNewSentencePiece(words, index, keepTogetherPhrases = []) {
     )
   ) return true;
   if (startsUppercase(word) && token === "because") return true;
+  if (startsUppercase(word) && isSubordinatingConjunction(token) && previousToken === "have") return true;
   if ((isConjunction(previousToken) || isSubordinatingConjunction(previousToken) || isPreposition(previousToken) || isAuxiliary(previousToken)) && !isPhrasalVerbParticle(previousToken)) return false;
   if (token === "i" && !startsUppercase(word)) return false;
   if (token === "i" && (RELATIVE_CLAUSE_ANTECEDENTS.has(previousToken) || TEMPORAL_NOUNS.has(previousToken))) return false;
@@ -2472,7 +3388,9 @@ function startsUppercase(word) {
 function buildKeepTogetherPhrases(payload) {
   const phrases = new Set(defaultSettings.keepTogetherPhrases.map(normalizePhrase));
   DEFAULT_GLOSSARY_RULES.forEach((rule) => {
+    const original = normalizePhrase(rule.original);
     const replacement = normalizePhrase(rule.replacement);
+    if (original && original.includes(" ")) phrases.add(original);
     if (replacement && replacement.includes(" ")) phrases.add(replacement);
   });
   DEFAULT_KEEP_TOGETHER_PHRASES.forEach((phrase) => {
@@ -2811,6 +3729,9 @@ module.exports = {
   extractSrt,
   postProcessSrtText,
   applySrtRules,
+  buildSrtFromWhisperTimedWords,
+  extractWhisperTimedWords,
+  readWhisperCueConfidence,
   splitSrtAtSentenceBoundaries,
   findSubtitleIssues,
   defaultSettings
