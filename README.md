@@ -1,6 +1,6 @@
 ﻿# Subtitle Generator
 
-Desktop app for creating editable SRT subtitle files from audio/video files. It defaults to ElevenLabs Scribe v2 transcription, with bundled local Whisper and Gladia still available as optional providers.
+Desktop app for creating editable SRT subtitle files from audio/video files. It defaults to ElevenLabs Scribe v2 transcription through a Supabase proxy, with bundled local Whisper available as a backup/offline provider.
 
 ## Setup
 
@@ -20,7 +20,7 @@ npm start
 npm run check
 ```
 
-The app stores preferences in Electron's user data directory on the local machine. An API key is needed when the transcription provider is set to ElevenLabs or Gladia.
+The app stores preferences in Electron's user data directory on the local machine. End users do not need an ElevenLabs key because cloud transcription goes through the Supabase proxy.
 
 ## Build Installer
 
@@ -47,12 +47,10 @@ The release tag should match the version in `package.json`, such as `v0.1.1` for
 ## Current Features
 
 - Batch audio/video file queue with picker and drag-and-drop
-- ElevenLabs Scribe v2 transcription with word-level timestamps
+- ElevenLabs Scribe v2 transcription with word-level timestamps through a Supabase Edge Function
 - Free local Whisper transcription through bundled `whisper.cpp`
-- Optional reference script assist that aligns Whisper output to a pasted script or selectable-text PDF and fixes close recognition misses while preserving subtitle timing
-- Optional Gladia v2 upload and pre-recorded transcription flow
 - SRT generation with configurable subtitle limits
-- Global custom vocabulary and custom spelling rules
+- Synced global vocabulary and spelling rules through Supabase
 - Settings screen with saved defaults
 - Windows Save As dialog for SRT export
 - Editable SRT preview before export
@@ -75,7 +73,28 @@ npm run check
 npm start
 ```
 
-Editors can use Local Whisper without an API key or internet connection after install. ElevenLabs and Gladia modes require each editor to save their own API key in settings. API keys are stored locally and should not be committed to GitHub.
+Editors can use the default ElevenLabs provider without receiving the ElevenLabs API key because the key is stored in Supabase Edge Function secrets. Local Whisper works without an API key or internet connection after install. Server-only keys should not be committed to GitHub.
+
+## Supabase Backend
+
+The app uses Supabase project `errixvxrtwfevsarputx` for:
+
+- `transcribe` Edge Function: proxies uploads to ElevenLabs without exposing the ElevenLabs API key in the desktop app.
+- `dictionary` Edge Function: syncs global vocabulary and spelling rules across users.
+- `dictionary_entries` and `dictionary_audit_log` tables.
+
+Safe-to-ship client config lives in `src/main.cjs`:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+Server-only secrets are stored in Supabase and must not be committed:
+
+- `ELEVENLABS_API_KEY`
+- `SERVICE_ROLE_KEY`
+- `ADMIN_SECRET`
+
+Users are identified by a generated local `userId`; no login is required. User-added dictionary entries become active globally immediately. Pending entries can be edited/removed by their creator, while approved entries are locked for regular users. Admin mode is enabled by entering the admin secret in Settings.
 
 ## Publish a Release
 
@@ -93,4 +112,4 @@ GitHub Actions will build the Windows installer and attach it to a GitHub Releas
 
 ## Notes
 
-ElevenLabs mode uploads the selected audio/video file directly to ElevenLabs, requests Scribe v2 word timestamps, then runs the app's own subtitle builder and QA rules. Local Whisper is powered by `whisper.cpp` and currently bundles the CPU x64 binary plus the `base.en` model. This keeps transcription free and offline, but the packaged installer is larger and transcription speed depends on the user's computer. The app also bundles FFmpeg for Windows so video inputs such as MP4/MOV/MKV are normalized to temporary MP3 audio before Whisper runs. End users do not need to install Whisper, Python, FFmpeg, or provide an API key when using the local Whisper provider.
+ElevenLabs mode uploads the selected audio/video file to the Supabase proxy, which forwards it to ElevenLabs, requests Scribe v2 word timestamps, then returns the result to the app's own subtitle builder and QA rules. Local Whisper is powered by `whisper.cpp` and currently bundles the CPU x64 binary plus the `base.en` model. This keeps transcription free and offline, but the packaged installer is larger and transcription speed depends on the user's computer. The app also bundles FFmpeg for Windows so video inputs such as MP4/MOV/MKV are normalized to temporary MP3 audio before Whisper runs. End users do not need to install Whisper, Python, FFmpeg, or provide an API key when using the local Whisper provider.

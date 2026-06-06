@@ -1,0 +1,7 @@
+project_id = "errixvxrtwfevsarputx"
+
+[functions.transcribe]
+verify_jwt = true
+
+[functions.dictionary]
+verify_jwt = true

@@ -1,6 +1,7 @@
 const electron = process.versions.electron ? require("electron") : {};
 const { app, BrowserWindow, dialog, ipcMain, shell } = electron;
 const { spawn } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const packageInfo = require("../package.json");
@@ -13,12 +14,11 @@ if (process.versions.electron) {
   }
 }
 
-const GLADIA_BASE_URL = "https://api.gladia.io/v2";
-const ELEVENLABS_STT_URL = "https://api.elevenlabs.io/v1/speech-to-text";
+const SUPABASE_URL = "https://errixvxrtwfevsarputx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVycml4dnhydHdmZXZzYXJwdXR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NTIxNjksImV4cCI6MjA5NjMyODE2OX0.hBJaafeM42xVw4B4svM6lJygxWToocMf1DEizfLUyl0";
+const SUPABASE_FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
 const RELEASES_API_URL = "https://api.github.com/repos/BS-apps3244/subtitle-generator/releases/latest";
 const RELEASES_PAGE_URL = "https://github.com/BS-apps3244/subtitle-generator/releases/latest";
-const POLL_INTERVAL_MS = 4000;
-const MAX_POLL_ATTEMPTS = 450;
 const MAX_SRT_REPAIR_PASSES = 8;
 const DEFAULT_WHISPER_MODEL = "base.en";
 const WHISPER_MODELS = {
@@ -185,7 +185,8 @@ let mainWindow;
 let autoUpdaterConfigured = false;
 
 const defaultSettings = {
-  apiKey: "",
+  userId: "",
+  adminSecret: "",
   transcriptionProvider: "elevenlabs",
   whisperModel: DEFAULT_WHISPER_MODEL,
   outputFolder: "",
@@ -202,6 +203,10 @@ const defaultSettings = {
   vocabularyDefaultIntensity: 0.4,
   vocabulary: [],
   spellingRules: [],
+  cloudDictionary: {
+    lastSyncedAt: "",
+    entries: []
+  },
   keepTogetherPhrases: ["video file"],
   history: []
 };
@@ -217,18 +222,29 @@ function srtArchiveDir() {
 function readSettings() {
   try {
     const raw = fs.readFileSync(storePath(), "utf8");
-    return mergeSettings(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    const merged = mergeSettings(parsed);
+    if (!parsed.userId && merged.userId) {
+      writeSettings(merged);
+    }
+    return merged;
   } catch {
-    return { ...defaultSettings };
+    const settings = mergeSettings({});
+    writeSettings(settings);
+    return settings;
   }
 }
 
 function mergeSettings(settings) {
   const requestedWhisperModel = ["large-v3", "large-v3-q5_0"].includes(settings.whisperModel) ? "medium.en" : settings.whisperModel;
   const whisperModel = WHISPER_MODELS[requestedWhisperModel] ? requestedWhisperModel : DEFAULT_WHISPER_MODEL;
+  const userId = typeof settings.userId === "string" && settings.userId.length >= 12
+    ? settings.userId
+    : `user-${crypto.randomUUID()}`;
   return {
     ...defaultSettings,
     ...settings,
+    userId,
     whisperModel,
     subtitleDefaults: {
       ...defaultSettings.subtitleDefaults,
@@ -236,6 +252,11 @@ function mergeSettings(settings) {
     },
     vocabulary: Array.isArray(settings.vocabulary) ? settings.vocabulary : [],
     spellingRules: Array.isArray(settings.spellingRules) ? settings.spellingRules : [],
+    cloudDictionary: {
+      ...defaultSettings.cloudDictionary,
+      ...(settings.cloudDictionary || {}),
+      entries: Array.isArray(settings.cloudDictionary?.entries) ? settings.cloudDictionary.entries : []
+    },
     keepTogetherPhrases: Array.isArray(settings.keepTogetherPhrases) ? settings.keepTogetherPhrases : defaultSettings.keepTogetherPhrases,
     history: Array.isArray(settings.history) ? settings.history : []
   };
@@ -245,6 +266,172 @@ function writeSettings(settings) {
   fs.mkdirSync(path.dirname(storePath()), { recursive: true });
   fs.writeFileSync(storePath(), JSON.stringify(mergeSettings(settings), null, 2));
   return readSettings();
+}
+
+async function readSettingsWithCloudDictionary() {
+  const settings = readSettings();
+  try {
+    const entries = await fetchCloudDictionaryEntries(settings);
+    const updated = {
+      ...settings,
+      cloudDictionary: {
+        lastSyncedAt: new Date().toISOString(),
+        entries
+      }
+    };
+    fs.mkdirSync(path.dirname(storePath()), { recursive: true });
+    fs.writeFileSync(storePath(), JSON.stringify(mergeSettings(updated), null, 2));
+    return mergeCloudDictionaryIntoSettings(updated);
+  } catch {
+    return mergeCloudDictionaryIntoSettings(settings);
+  }
+}
+
+function mergeCloudDictionaryIntoSettings(settings) {
+  const entries = Array.isArray(settings.cloudDictionary?.entries) ? settings.cloudDictionary.entries : [];
+  const cloudVocabulary = [];
+  const cloudSpellingRules = [];
+
+  entries.forEach((entry) => {
+    if (!isActiveCloudDictionaryEntry(entry)) return;
+    if (entry.type === "vocabulary" && entry.value) {
+      cloudVocabulary.push({
+        value: entry.value,
+        pronunciations: entry.pronunciations || "",
+        intensity: entry.intensity ?? "",
+        language: entry.language || "",
+        cloudId: entry.id,
+        cloudStatus: entry.status,
+        ownerUserId: entry.owner_user_id
+      });
+    }
+    if (entry.type === "spelling" && entry.original && entry.replacement) {
+      cloudSpellingRules.push({
+        original: entry.original,
+        replacement: entry.replacement,
+        cloudId: entry.id,
+        cloudStatus: entry.status,
+        ownerUserId: entry.owner_user_id
+      });
+    }
+  });
+
+  return {
+    ...settings,
+    vocabulary: mergeVocabularyEntries(cloudVocabulary, settings.vocabulary || []),
+    spellingRules: mergeSpellingEntries(cloudSpellingRules, settings.spellingRules || [])
+  };
+}
+
+function isActiveCloudDictionaryEntry(entry) {
+  return entry && ["pending_user", "approved_global"].includes(entry.status);
+}
+
+function mergeVocabularyEntries(...groups) {
+  const seen = new Set();
+  return groups.flat().filter((entry) => {
+    const key = normalizePhrase(entry.value || "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergeSpellingEntries(...groups) {
+  const seen = new Set();
+  return groups.flat().filter((entry) => {
+    const key = `${normalizePhrase(entry.original || "")}->${normalizePhrase(entry.replacement || "")}`;
+    if (key === "->" || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function fetchCloudDictionaryEntries(settings = readSettings()) {
+  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/dictionary`, {
+    method: "GET",
+    headers: supabaseFunctionHeaders(settings)
+  });
+  const json = await parseResponse(response, "Could not sync global dictionary");
+  return Array.isArray(json.entries) ? json.entries : [];
+}
+
+async function syncLocalDictionaryToCloud(settings = readSettings()) {
+  const actions = [];
+  (settings.vocabulary || []).forEach((entry) => {
+    if (!entry?.value) return;
+    if (entry.cloudId) {
+      if (canSendCloudDictionaryMutation(settings, entry)) {
+        actions.push({ action: "update", entry: cloudVocabularyPayload(entry) });
+      }
+      return;
+    }
+    actions.push({ action: "create", entry: cloudVocabularyPayload(entry) });
+  });
+
+  (settings.spellingRules || []).forEach((rule) => {
+    if (!rule?.original || !rule?.replacement) return;
+    if (rule.cloudId) {
+      if (canSendCloudDictionaryMutation(settings, rule)) {
+        actions.push({ action: "update", entry: cloudSpellingPayload(rule) });
+      }
+      return;
+    }
+    actions.push({ action: "create", entry: cloudSpellingPayload(rule) });
+  });
+
+  for (const action of actions) {
+    try {
+      await sendCloudDictionaryAction(settings, action);
+    } catch {
+      // Keep local saving usable if the network or dictionary backend is unavailable.
+    }
+  }
+}
+
+function canSendCloudDictionaryMutation(settings, entry) {
+  if (settings.adminSecret) return true;
+  return entry.cloudStatus === "pending_user" && entry.ownerUserId === settings.userId;
+}
+
+function cloudVocabularyPayload(entry) {
+  return {
+    id: entry.cloudId || entry.id || undefined,
+    type: "vocabulary",
+    value: entry.value || "",
+    pronunciations: entry.pronunciations || "",
+    intensity: entry.intensity === "" || entry.intensity === undefined ? null : Number(entry.intensity),
+    language: entry.language || ""
+  };
+}
+
+function cloudSpellingPayload(rule) {
+  return {
+    id: rule.cloudId || rule.id || undefined,
+    type: "spelling",
+    original: rule.original || "",
+    replacement: rule.replacement || ""
+  };
+}
+
+async function sendCloudDictionaryAction(settings, payload) {
+  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/dictionary`, {
+    method: "POST",
+    headers: supabaseFunctionHeaders(settings, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload)
+  });
+  return parseResponse(response, "Could not update global dictionary");
+}
+
+function supabaseFunctionHeaders(settings = readSettings(), extra = {}) {
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    "x-app-user-id": settings.userId || `user-${crypto.randomUUID()}`,
+    ...extra
+  };
+  if (settings.adminSecret) headers["x-admin-secret"] = settings.adminSecret;
+  return headers;
 }
 
 async function checkForRequiredUpdate() {
@@ -420,10 +607,18 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-ipcMain.handle("settings:get", () => readSettings());
+ipcMain.handle("settings:get", async () => readSettingsWithCloudDictionary());
 
-ipcMain.handle("settings:save", (_event, nextSettings) => {
-  return writeSettings(nextSettings);
+ipcMain.handle("settings:save", async (_event, nextSettings) => {
+  const saved = writeSettings(nextSettings);
+  await syncLocalDictionaryToCloud(saved);
+  return readSettingsWithCloudDictionary();
+});
+
+ipcMain.handle("dictionary:action", async (_event, payload) => {
+  const settings = readSettings();
+  await sendCloudDictionaryAction(settings, payload);
+  return readSettingsWithCloudDictionary();
 });
 
 ipcMain.handle("app:version", () => getCurrentVersion());
@@ -460,19 +655,6 @@ ipcMain.handle("files:pick-inputs", async () => {
   return result.canceled ? [] : result.filePaths;
 });
 
-ipcMain.handle("files:pick-reference-pdf", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose reference script PDF",
-    properties: ["openFile"],
-    filters: [
-      { name: "PDF", extensions: ["pdf"] },
-      { name: "All Files", extensions: ["*"] }
-    ]
-  });
-  if (result.canceled || !result.filePaths[0]) return "";
-  return extractPdfText(result.filePaths[0]);
-});
-
 ipcMain.handle("folders:pick-output", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Choose output folder",
@@ -502,12 +684,13 @@ ipcMain.handle("srt:save", async (_event, { filePath, outputFolder, srtText }) =
 });
 
 ipcMain.handle("srt:apply-rules", (_event, payload) => {
-  const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
+  const settings = mergeCloudDictionaryIntoSettings({ ...readSettings(), ...payload });
+  const keepTogetherPhrases = buildKeepTogetherPhrases(settings);
   const updated = applySrtRules(
     payload.srtText || "",
-    payload.subtitleDefaults || defaultSettings.subtitleDefaults,
+    settings.subtitleDefaults || defaultSettings.subtitleDefaults,
     keepTogetherPhrases,
-    payload.spellingRules || [],
+    settings.spellingRules || [],
     payload.referenceScript || ""
   );
   if (payload.filePath) upsertHistorySrt(payload.filePath, updated);
@@ -532,8 +715,8 @@ ipcMain.handle("history:load-srt", (_event, historyId) => {
   };
 });
 
-ipcMain.handle("gladia:transcribe", async (_event, payload) => {
-  const settings = readSettings();
+ipcMain.handle("transcription:transcribe", async (_event, payload) => {
+  const settings = await readSettingsWithCloudDictionary();
   const provider = payload.transcriptionProvider || settings.transcriptionProvider || defaultSettings.transcriptionProvider;
   if (provider === "local-whisper") {
     return transcribeWithLocalWhisper(payload, settings);
@@ -543,84 +726,18 @@ ipcMain.handle("gladia:transcribe", async (_event, payload) => {
     return transcribeWithElevenLabs(payload, settings);
   }
 
-  if (provider !== "gladia") {
-    throw new Error(`Unknown transcription provider: ${provider}`);
-  }
-
-  const apiKey = payload.apiKey || settings.apiKey;
-
-  if (!apiKey) {
-    throw new Error("Add your Gladia API key in Settings before transcribing.");
-  }
-
-  const filePath = payload.filePath;
-  if (!filePath || !fs.existsSync(filePath)) {
-    throw new Error("The selected media file could not be found.");
-  }
-
-  emitJobProgress(filePath, "uploading", "Uploading media to Gladia");
-  const upload = await uploadFile(apiKey, filePath);
-
-  emitJobProgress(filePath, "transcribing", "Starting transcription");
-  const job = await startTranscription(apiKey, upload.audio_url, payload);
-
-  emitJobProgress(filePath, "transcribing", "Waiting for Gladia to finish");
-  const result = await pollTranscription(apiKey, job.result_url || `${GLADIA_BASE_URL}/pre-recorded/${job.id}`, filePath);
-
-  const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
-  const srtText = extractSrt(
-    result,
-    payload.subtitleDefaults,
-    keepTogetherPhrases,
-    payload.spellingRules || [],
-    payload.referenceScript || ""
-  );
-  if (!srtText) {
-    throw new Error("Gladia completed the job, but no SRT subtitle payload was returned.");
-  }
-
-  const archivePath = archiveSrt(job.id, path.basename(filePath), srtText);
-  const updatedSettings = readSettings();
-  const existingIndex = updatedSettings.history.findIndex((item) => item.id === job.id || item.filePath === filePath);
-  const historyItem = {
-    id: job.id,
-    filePath,
-    fileName: path.basename(filePath),
-    createdAt: new Date().toISOString(),
-    status: "done",
-    duration: upload.audio_metadata?.audio_duration || null,
-    archivePath,
-    outputPath: ""
-  };
-  if (existingIndex >= 0) updatedSettings.history.splice(existingIndex, 1);
-  updatedSettings.history.unshift(historyItem);
-  updatedSettings.history = updatedSettings.history.slice(0, 100);
-  writeSettings(updatedSettings);
-
-  emitJobProgress(filePath, "review", "Ready to review and export");
-  return {
-    id: job.id,
-    filePath,
-    fileName: path.basename(filePath),
-    srtText,
-    raw: result
-  };
+  throw new Error(`Unknown transcription provider: ${provider}`);
 });
 }
 
 async function transcribeWithElevenLabs(payload, settings) {
-  const apiKey = payload.apiKey || settings.apiKey;
-  if (!apiKey) {
-    throw new Error("Add your ElevenLabs API key in Settings before transcribing.");
-  }
-
   const filePath = payload.filePath;
   if (!filePath || !fs.existsSync(filePath)) {
     throw new Error("The selected media file could not be found.");
   }
 
-  emitJobProgress(filePath, "uploading", "Uploading media to ElevenLabs");
-  const result = await runElevenLabsTranscription(apiKey, filePath, payload);
+  emitJobProgress(filePath, "uploading", "Uploading media for transcription");
+  const result = await runElevenLabsTranscription(filePath, payload, settings);
   const keepTogetherPhrases = buildKeepTogetherPhrases(payload);
   const timedWords = extractElevenLabsTimedWords(result, payload.spellingRules || settings.spellingRules || []);
 
@@ -678,7 +795,7 @@ async function transcribeWithElevenLabs(payload, settings) {
   };
 }
 
-async function runElevenLabsTranscription(apiKey, filePath, payload) {
+async function runElevenLabsTranscription(filePath, payload, settings = readSettings()) {
   const form = new FormData();
   const buffer = fs.readFileSync(filePath);
   form.append("file", new Blob([buffer]), path.basename(filePath));
@@ -693,14 +810,18 @@ async function runElevenLabsTranscription(apiKey, filePath, payload) {
     buildElevenLabsKeyterms(payload).forEach((term) => form.append("keyterms", term));
   }
 
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("The ElevenLabs transcription backend is not configured.");
+  }
+
   emitJobProgress(filePath, "transcribing", "Transcribing with ElevenLabs Scribe v2");
-  const response = await fetch(ELEVENLABS_STT_URL, {
+  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/transcribe`, {
     method: "POST",
-    headers: { "xi-api-key": apiKey },
+    headers: supabaseFunctionHeaders(settings),
     body: form
   });
 
-  return parseResponse(response, "ElevenLabs transcription failed");
+  return parseResponse(response, "Supabase transcription proxy failed");
 }
 
 function buildElevenLabsKeyterms(payload = {}) {
@@ -978,24 +1099,6 @@ function convertVideoToAudio(filePath) {
   });
 }
 
-async function extractPdfText(filePath) {
-  if (!filePath || !fs.existsSync(filePath)) {
-    throw new Error("The selected PDF file could not be found.");
-  }
-  if (path.extname(filePath).toLowerCase() !== ".pdf") {
-    throw new Error("Choose a PDF file for the reference script.");
-  }
-
-  const pdfParse = require("pdf-parse");
-  const buffer = fs.readFileSync(filePath);
-  const result = await pdfParse(buffer);
-  const text = normalizeReferenceScriptText(result.text || "");
-  if (!text) {
-    throw new Error("No selectable text was found in this PDF. If it is a scanned image PDF, copy/paste the script text instead.");
-  }
-  return text;
-}
-
 function normalizeReferenceScriptText(text) {
   return cleanReferenceScriptForAssist(text)
     .replace(/\r/g, "\n")
@@ -1201,95 +1304,6 @@ function extractWhisperTimedWords(json, spellingRules = []) {
   }).filter((word) => word.text && Number.isFinite(word.start) && Number.isFinite(word.end));
 }
 
-async function uploadFile(apiKey, filePath) {
-  const form = new FormData();
-  const buffer = fs.readFileSync(filePath);
-  const blob = new Blob([buffer]);
-  form.append("audio", blob, path.basename(filePath));
-
-  const response = await fetch(`${GLADIA_BASE_URL}/upload`, {
-    method: "POST",
-    headers: { "x-gladia-key": apiKey },
-    body: form
-  });
-
-  return parseResponse(response, "Gladia upload failed");
-}
-
-async function startTranscription(apiKey, audioUrl, payload) {
-  const vocabulary = normalizeVocabulary(payload.vocabulary || []);
-  const spellingRules = normalizeSpellingRules(withDefaultSpellingRules(payload.spellingRules || []));
-
-  const body = {
-    audio_url: audioUrl,
-    language_config: {
-      languages: [],
-      code_switching: false
-    },
-    subtitles: true,
-    subtitles_config: {
-      formats: ["srt"],
-      minimum_duration: Number(payload.subtitleDefaults.minimum_duration),
-      maximum_duration: Number(payload.subtitleDefaults.maximum_duration),
-      maximum_characters_per_row: Number(payload.subtitleDefaults.maximum_characters_per_row),
-      maximum_rows_per_caption: Number(payload.subtitleDefaults.maximum_rows_per_caption),
-      style: payload.subtitleDefaults.style
-    },
-    sentences: true,
-    punctuation_enhanced: true,
-    custom_metadata: {
-      source_app: "subtitle-generator",
-      source_filename: payload.filePath ? path.basename(payload.filePath) : undefined
-    }
-  };
-
-  if (vocabulary.length > 0) {
-    body.custom_vocabulary = true;
-    body.custom_vocabulary_config = {
-      vocabulary,
-      default_intensity: Number(payload.vocabularyDefaultIntensity || 0.4)
-    };
-  }
-
-  if (Object.keys(spellingRules).length > 0) {
-    body.custom_spelling = true;
-    body.custom_spelling_config = {
-      spelling_dictionary: spellingRules
-    };
-  }
-
-  const response = await fetch(`${GLADIA_BASE_URL}/pre-recorded`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-gladia-key": apiKey
-    },
-    body: JSON.stringify(body)
-  });
-
-  return parseResponse(response, "Gladia transcription start failed");
-}
-
-async function pollTranscription(apiKey, resultUrl, filePath) {
-  for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt += 1) {
-    const response = await fetch(resultUrl, {
-      headers: { "x-gladia-key": apiKey }
-    });
-    const json = await parseResponse(response, "Gladia transcription polling failed");
-    const status = json.status || json.result?.status;
-
-    if (status === "done") return json;
-    if (status === "error" || status === "failed") {
-      throw new Error(json.error || json.message || "Gladia reported a transcription failure.");
-    }
-
-    emitJobProgress(filePath, "transcribing", `Still working (${status || "queued"})`);
-    await delay(POLL_INTERVAL_MS);
-  }
-
-  throw new Error("Timed out waiting for Gladia transcription.");
-}
-
 async function parseResponse(response, message) {
   const text = await response.text();
   let json = {};
@@ -1345,7 +1359,7 @@ function upsertHistorySrt(filePath, srtText, outputPath = "") {
 }
 
 function extractSrt(result, subtitleDefaults, keepTogetherPhrases, spellingRules = [], referenceScript = "") {
-  const sentences = extractGladiaSentences(result);
+  const sentences = extractProviderSentences(result);
   if (sentences.length > 0) {
     return applyScriptAssistToFormattedSrt(
       buildSrtFromSentences(sentences, subtitleDefaults, keepTogetherPhrases, spellingRules),
@@ -1386,7 +1400,7 @@ function extractSrt(result, subtitleDefaults, keepTogetherPhrases, spellingRules
   return "";
 }
 
-function extractGladiaSentences(result) {
+function extractProviderSentences(result) {
   const candidates = [
     result.result?.transcription?.sentences?.results,
     result.result?.transcription?.sentences,

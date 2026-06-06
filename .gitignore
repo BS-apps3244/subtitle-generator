@@ -17,6 +17,7 @@ yarn-error.log*
 .env
 .env.*
 *.local
+supabase/.temp/
 
 # OS/editor metadata
 .DS_Store

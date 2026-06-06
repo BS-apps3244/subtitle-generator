@@ -1,6 +1,6 @@
 {
   "name": "subtitle-generator",
-  "version": "0.1.13",
+  "version": "1.0.0",
   "description": "Desktop subtitle generator for Premiere workflows using ElevenLabs and local Whisper.",
   "author": "Subtitle Generator Contributors",
   "main": "src/main.cjs",
@@ -71,8 +71,7 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.8.3",
-    "pdf-parse": "^1.1.1"
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "electron": "^30.5.1",

@@ -67,7 +67,6 @@ function bindJobs() {
   $("#start-batch").addEventListener("click", startBatch);
   $("#apply-rules").addEventListener("click", applyRulesToEditor);
   $("#save-srt").addEventListener("click", saveSelectedSrt);
-  $("#load-script-pdf").addEventListener("click", loadReferencePdf);
 }
 
 function bindFileDrops() {
@@ -257,8 +256,8 @@ function updateInstallProgress(event) {
 }
 
 function hydrateSettings() {
-  $("#api-key").value = state.settings.apiKey || "";
-  $("#transcription-provider").value = state.settings.transcriptionProvider || "local-whisper";
+  $("#admin-secret").value = state.settings.adminSecret || "";
+  $("#transcription-provider").value = state.settings.transcriptionProvider || "elevenlabs";
   $("#whisper-model").value = state.settings.whisperModel || "base.en";
   $("#output-folder").value = state.settings.outputFolder || "";
   $("#max-chars").value = state.settings.subtitleDefaults.maximum_characters_per_row;
@@ -276,7 +275,7 @@ function collectSettings() {
   collectDictionary();
   return {
     ...state.settings,
-    apiKey: $("#api-key").value.trim(),
+    adminSecret: $("#admin-secret").value.trim(),
     transcriptionProvider: $("#transcription-provider").value,
     whisperModel: $("#whisper-model").value,
     outputFolder: $("#output-folder").value.trim(),
@@ -299,12 +298,18 @@ function collectDictionary() {
     value: row.querySelector("[data-field='value']").value.trim(),
     pronunciations: row.querySelector("[data-field='pronunciations']").value.trim(),
     intensity: row.querySelector("[data-field='intensity']").value,
-    language: row.querySelector("[data-field='language']").value.trim()
+    language: row.querySelector("[data-field='language']").value.trim(),
+    cloudId: row.dataset.cloudId || "",
+    cloudStatus: row.dataset.cloudStatus || "",
+    ownerUserId: row.dataset.ownerUserId || ""
   })).filter((entry) => entry.value);
 
   state.settings.spellingRules = Array.from(document.querySelectorAll(".rule-item.spelling")).map((row) => ({
     original: row.querySelector("[data-field='original']").value.trim(),
-    replacement: row.querySelector("[data-field='replacement']").value.trim()
+    replacement: row.querySelector("[data-field='replacement']").value.trim(),
+    cloudId: row.dataset.cloudId || "",
+    cloudStatus: row.dataset.cloudStatus || "",
+    ownerUserId: row.dataset.ownerUserId || ""
   })).filter((rule) => rule.original && rule.replacement);
 }
 
@@ -343,8 +348,7 @@ async function startBatch() {
     try {
       const result = await window.subtitleApp.transcribe({
         ...state.settings,
-        filePath: item.filePath,
-        referenceScript: $("#reference-script").value.trim()
+        filePath: item.filePath
       });
       state.completed.set(item.filePath, result.srtText);
       item.status = "done";
@@ -376,25 +380,13 @@ async function saveSelectedSrt() {
   setStatus(`Saved ${outputPath}`);
 }
 
-async function loadReferencePdf() {
-  try {
-    const text = await window.subtitleApp.pickReferencePdf();
-    if (!text) return;
-    $("#reference-script").value = text;
-    setStatus("Loaded reference script from PDF.");
-  } catch (error) {
-    setStatus(error.message);
-  }
-}
-
 async function applyRulesToEditor() {
   state.settings = collectSettings();
   state.settings = await window.subtitleApp.saveSettings(state.settings);
   const updated = await window.subtitleApp.applyRules({
     ...state.settings,
     filePath: state.selectedFilePath,
-    srtText: $("#srt-editor").value,
-    referenceScript: $("#reference-script").value.trim()
+    srtText: $("#srt-editor").value
   });
   $("#srt-editor").value = updated;
   if (state.selectedFilePath) state.completed.set(state.selectedFilePath, updated);
@@ -441,13 +433,18 @@ function renderDictionary() {
   const vocabList = $("#vocab-list");
   vocabList.innerHTML = "";
   state.settings.vocabulary.forEach((entry, index) => {
-    const row = createRuleRow("vocab", [
+    const row = createRuleRow("vocab", entry, [
       ["value", "Term", entry.value],
       ["pronunciations", "Pronunciations", entry.pronunciations],
       ["intensity", "Intensity", entry.intensity],
       ["language", "Language", entry.language]
-    ], () => {
+    ], async () => {
       collectDictionary();
+      if (entry.cloudId) {
+        state.settings = await window.subtitleApp.dictionaryAction({ action: "remove", id: entry.cloudId });
+        renderDictionary();
+        return;
+      }
       state.settings.vocabulary.splice(index, 1);
       renderDictionary();
     });
@@ -457,11 +454,16 @@ function renderDictionary() {
   const spellingList = $("#spelling-list");
   spellingList.innerHTML = "";
   state.settings.spellingRules.forEach((rule, index) => {
-    const row = createRuleRow("spelling", [
+    const row = createRuleRow("spelling", rule, [
       ["original", "Find", rule.original],
       ["replacement", "Replace", rule.replacement]
-    ], () => {
+    ], async () => {
       collectDictionary();
+      if (rule.cloudId) {
+        state.settings = await window.subtitleApp.dictionaryAction({ action: "remove", id: rule.cloudId });
+        renderDictionary();
+        return;
+      }
       state.settings.spellingRules.splice(index, 1);
       renderDictionary();
     });
@@ -469,22 +471,50 @@ function renderDictionary() {
   });
 }
 
-function createRuleRow(type, fields, onRemove) {
+function createRuleRow(type, entry, fields, onRemove) {
   const row = document.createElement("div");
   row.className = `rule-item ${type}`;
+  row.dataset.cloudId = entry.cloudId || "";
+  row.dataset.cloudStatus = entry.cloudStatus || "";
+  row.dataset.ownerUserId = entry.ownerUserId || "";
+  const canEdit = canEditDictionaryEntry(entry);
   fields.forEach(([field, placeholder, value]) => {
     const input = document.createElement("input");
     input.dataset.field = field;
     input.placeholder = placeholder;
     input.value = value || "";
+    input.disabled = !canEdit;
     row.appendChild(input);
   });
+  if (entry.cloudStatus) {
+    const meta = document.createElement("div");
+    meta.className = "rule-meta";
+    meta.textContent = entry.cloudStatus === "approved_global" ? "Approved global" : "Synced pending";
+    row.appendChild(meta);
+  }
+  if (state.settings.adminSecret && entry.cloudId && entry.cloudStatus === "pending_user") {
+    const approve = document.createElement("button");
+    approve.type = "button";
+    approve.textContent = "Approve";
+    approve.addEventListener("click", async () => {
+      state.settings = await window.subtitleApp.dictionaryAction({ action: "approve", id: entry.cloudId });
+      renderDictionary();
+    });
+    row.appendChild(approve);
+  }
   const remove = document.createElement("button");
   remove.type = "button";
   remove.textContent = "Remove";
+  remove.disabled = !canEdit;
   remove.addEventListener("click", onRemove);
   row.appendChild(remove);
   return row;
+}
+
+function canEditDictionaryEntry(entry) {
+  if (!entry.cloudId) return true;
+  if (state.settings.adminSecret) return true;
+  return entry.cloudStatus === "pending_user" && entry.ownerUserId === state.settings.userId;
 }
 
 function renderHistory() {

@@ -56,14 +56,6 @@
               <div id="queue-list" class="queue-list empty">No files added yet.</div>
             </section>
 
-            <section class="panel script-panel">
-              <div class="panel-header">
-                <h3>Reference Script</h3>
-                <button id="load-script-pdf" type="button">Load PDF</button>
-              </div>
-              <textarea id="reference-script" spellcheck="true" placeholder="Optional: paste the script here before starting the batch. The app will use it to correct close Whisper misses while keeping Whisper timings."></textarea>
-            </section>
-
             <section class="panel editor-panel">
               <div class="panel-header">
                 <h3>SRT Review</h3>
@@ -121,15 +113,14 @@
 
           <section class="panel settings-grid">
             <label class="field wide">
-              Transcription API key
-              <input id="api-key" type="password" autocomplete="off" placeholder="Paste ElevenLabs or Gladia API key locally" />
+              Admin secret
+              <input id="admin-secret" type="password" autocomplete="off" placeholder="Admin-only dictionary controls" />
             </label>
             <label class="field wide">
               Transcription provider
               <select id="transcription-provider">
-                <option value="elevenlabs">ElevenLabs Scribe v2</option>
-                <option value="local-whisper">Local Whisper</option>
-                <option value="gladia">Gladia</option>
+                <option value="elevenlabs">ElevenLabs Scribe v2 (default)</option>
+                <option value="local-whisper">Local Whisper (backup/offline)</option>
               </select>
             </label>
             <label class="field wide">

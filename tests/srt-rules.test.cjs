@@ -734,8 +734,8 @@ function assertNoLeadingCommaWord(srt) {
   const texts = cueTexts(srt);
   assertMaxTextLinesPerCue(srt, 1);
   assertMaxCueCharacters(srt, sentenceSettings.maximum_characters_per_row);
-  assert(!texts.some((text) => /\byears Two years later\b/.test(text)), `Sentence builder must not merge across Gladia sentence boundaries:\n${srt}`);
-  assert(!texts.some((text) => /\bone We render\b/.test(text)), `Sentence builder must preserve the next Gladia sentence start:\n${srt}`);
+  assert(!texts.some((text) => /\byears Two years later\b/.test(text)), `Sentence builder must not merge across provider sentence boundaries:\n${srt}`);
+  assert(!texts.some((text) => /\bone We render\b/.test(text)), `Sentence builder must preserve the next provider sentence start:\n${srt}`);
   assert(texts.some((text) => /^Two years later/i.test(text)), `Expected second sentence to start cleanly:\n${srt}`);
   assert(texts.some((text) => /^We render/i.test(text)), `Expected third sentence to start cleanly:\n${srt}`);
 
@@ -747,7 +747,7 @@ function assertNoLeadingCommaWord(srt) {
       }
     }
   }, sentenceSettings, keepTogetherPhrases);
-  assert(!cueTexts(extracted).some((text) => /\byears Two years later\b|\bone We render\b/.test(text)), `extractSrt should prefer Gladia sentence results over utterances:\n${extracted}`);
+  assert(!cueTexts(extracted).some((text) => /\byears Two years later\b|\bone We render\b/.test(text)), `extractSrt should prefer provider sentence results over utterances:\n${extracted}`);
 
   const duplicateAcrossSentences = buildSrtFromSentences([
     {

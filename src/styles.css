@@ -264,10 +264,15 @@ button.danger {
 
 .queue-meta,
 .history-meta,
-.status-line {
+.status-line,
+.rule-meta {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
+}
+
+.rule-meta {
+  align-self: center;
 }
 
 .editor-panel {
@@ -278,8 +283,7 @@ button.danger {
   flex-direction: column;
 }
 
-#srt-editor,
-#reference-script {
+#srt-editor {
   flex: 1;
   width: 100%;
   margin-top: 16px;
@@ -295,10 +299,6 @@ button.danger {
 
 #srt-editor {
   min-height: 500px;
-}
-
-#reference-script {
-  min-height: 220px;
 }
 
 .status-line {
